@@ -13,35 +13,22 @@ library(shinydashboardPlus)
 library(sf)
 library(leaflet)
 library(dplyr)
+library(tidyr)
 library(here)
 library(shinyEffects)
 library(plotly)
+library(DT)
 
 ##----------------------------------------------------------------------------##
 ##Abrir archivos necesarios
 ##----------------------------------------------------------------------------##
 ## WD
 setwd(here())
-## Polígonos
-#poligonos <-st_read("Assets/GeoJSON/09_hexagonos_Patios_Cargadores.geojson")%>%
-#  st_transform(crs =4326)
-## PoligonosV02
-poligonosV2 <-st_read("Assets/GeoJSON/10_Hexagonos_clusteres_filtrados.geojson")%>%
-  st_transform(crs =4326)
-## Base de datos
-## Rutas
-#rutas <-st_read("Assets/GeoJSON/09_Ruta_sabanas_id_hexagonoV2.geojson")%>%
-#  st_transform(crs = 4326) %>% 
-#  filter(!st_is_empty(.)) %>%
-#  subset(st_geometry_type(.)%in%c("LINESTRING","MULTILINESTRING"))
-## Rutas V2
-rutasv2 <-st_read("Assets/GeoJSON/09_Ruta_sabanas_id_hexagonoV2.geojson")%>%
-  st_transform(crs = 4326) %>% 
-  filter(!st_is_empty(.)) %>%
-  subset(st_geometry_type(.)%in%c("LINESTRING","MULTILINESTRING"))
 
+# Archivos
+poligonosV2 <- readRDS("Assets/RDS/poligonosV2.rds")
+rutasv2 <- readRDS("Assets/RDS/rutas.rds")
 
-  
 ## Datos_Rutas
 rutasDB <- read.csv2("Assets/CSV/Rutas_EX.csv",encoding = "UTF-8", sep = ";")
 
@@ -56,8 +43,8 @@ factpal_patios <- colorFactor(
 ##----------------------------------------------------------------------------##
 ##Preprocesamiento
 ##----------------------------------------------------------------------------##
-## poligonos V2, filtrar poligonos sin data
-## Unir rutas para saber poligonos sin data
+## Filtrar solo recorrido R1
+
 rutasv2R1 <- rutasv2%>%filter(Recorrido_ == "R1")
 
 
@@ -123,7 +110,7 @@ ui <- dashboardPage(
         tabName = "tab_intro",
         box(
           title = "Herramienta de análisis de rutas",
-          status = "info",
+          status = "primary",
           solidHeader = TRUE,
           width = 12,
           p("Esta herramienta permite seleccionar frentes de trabajo y analizar rutas escolares en Bogotá.")          
@@ -154,30 +141,72 @@ ui <- dashboardPage(
             )
           ),
           
-          # Costado derecho (1/3 de la pantalla)
+          # Costado derecho (1/3 de pantalla)
           column(
             width = 4,
             
-            # 3a. Espacio para controles
+            # Filtros
             box(
               title = "Filtros y Controles",
               status = "primary",
               solidHeader = TRUE,
               width = NULL,
               collapsible = TRUE,
-              # Aquí puedes agregar inputs como selectizeInput, sliderInput, etc.
-              p("Espacio reservado para controles futuros.")
+              ## Control mapa
+              
+              tags$h4(
+                style = "font-weight: bold; color: #2c3e50; margin-top: 5px; margin-bottom: 8px;",
+                "Variable de rutas en el mapa"
+              ),
+              radioButtons(
+                inputId = "var_color_ruta",
+                label = "Colorear Rutas por:",
+                choices = c(
+                "Tipo de Ruta" = "SR_Tip_Ruta",
+                "Tipo de Vehículo" = "SR_Veh_Aj_2"
+              ),
+              selected = "SR_Tip_Ruta"
+            ),
+              tags$h4(
+                style = "font-weight: bold; color: #2c3e50; margin-top: 5px; margin-bottom: 8px;",
+                "Filtrar rutas"
+              ),
+              
+              # Tipo de ruta
+              selectizeInput(
+                inputId  = "filtro_tipo_ruta",
+                label    = "Seleccionar Tipo de Ruta:",
+                choices  = NULL,
+                multiple = TRUE,
+                options  = list(placeholder = "Todas las rutas", plugins = list("remove_button"))
+              ),
+              
+              tags$hr(style = "border-top: 1px solid #e0e0e0; margin: 10px 0;"),
+              
+              # Tipo de vehículo
+              selectizeInput(
+                inputId  = "filtro_tipo_vehiculo",
+                label    = "Seleccionar Tipo de Vehículo:",
+                choices  = NULL,
+                multiple = TRUE,
+                options  = list(placeholder = "Todos los vehículos", plugins = list("remove_button"))
+              )
             ),
             
-            # 3b. Espacio posterior para gráficas
+            # Visualizaciones / Tablas
             box(
               title = "Visualizaciones",
               status = "primary",
               solidHeader = TRUE,
               width = NULL,
               collapsible = TRUE,
-              # Aquí puedes incluir outputs como plotlyOutput, plotOutput, etc.
-              plotlyOutput("grafica_secundaria", height = "300px")
+              
+              tags$h4(
+                style = "font-weight: bold; color: #2c3e50; margin-top: 5px; margin-bottom: 8px;",
+                "Distancia acumulada (Km) por Tipo y Vehículo"
+              ),
+              
+              DT::dataTableOutput("tabla_resumen_rutas")
             )
           )
         )
@@ -187,18 +216,9 @@ ui <- dashboardPage(
       tabItem(
         tabName = "tab_mapa2",
         fluidRow(
-          column(
-            width = 4,
-            valueBoxOutput("box_beneficiarios1",width =4)
-          ),
-          column(
-            width = 4,
-            valueBoxOutput("box_beneficiarios2",width =4)
-          ),
-          column(
-            width = 4,
-            valueBoxOutput("box_beneficiarios3",width =4)
-          ),
+          column(width = 4, valueBoxOutput("box_beneficiarios1", width = 12)),
+          column(width = 4, valueBoxOutput("box_beneficiarios2", width = 12)),
+          column(width = 4, valueBoxOutput("box_beneficiarios3", width = 12))
         ),
         box(
           title = "Explorar clústeres",
@@ -218,9 +238,10 @@ ui <- dashboardPage(
           status = "info",
           solidHeader = TRUE,
           width = 12,
-          p("Créditos, entidades, fuentes de información, otros")         
+          p("Créditos, entidades, fuentes de información, otros")          
         )
       ),
+      
       ## Pestaña 5: Créditos
       tabItem(
         tabName = "creditos",
@@ -242,10 +263,11 @@ ui <- dashboardPage(
 
 server <- function(input, output, session) {
   
-  ## Mapa 1. Explorar
-  ## 1.1. Contenedor reactivo 
-  seleccionados <- reactiveVal(character(0)) # Para mapa_interactivo
-  ## 1.2. Render del mapa interactivo principal
+  ##--------------------------------------------------------------------------##
+  ## 1. Mapa Interactivo y Selección
+  ##--------------------------------------------------------------------------##
+  seleccionados <- reactiveVal(character(0)) # Almacena IDs de polígonos seleccionados
+  
   output$mapa_interactivo <- renderLeaflet({
     leaflet(poligonosV2) %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
@@ -256,12 +278,20 @@ server <- function(input, output, session) {
         color       = "#2c3e50",
         weight      = 1.5,
         label       = ~paste("Polígono:", id, " | Cluster:", Cluster)
-        )
+      ) %>%
+      addLayersControl(
+        overlayGroups = c("Polígonos", "Polígonos Seleccionados", "Rutas Filtradas"),
+        options       = layersControlOptions(collapsed = FALSE)
+      )
   })
-  # 1.3. Capturar click en mapa_interactivo
+  
   observeEvent(input$mapa_interactivo_shape_click, {
     click <- input$mapa_interactivo_shape_click
-    id_cliqueado <- as.character(click$id)
+    req(click$id)
+    
+    # Manejar IDs directos o con prefijo de selección
+    raw_id <- as.character(click$id)
+    id_cliqueado <- gsub("^sel_", "", raw_id)
     
     vector_actual <- seleccionados()
     
@@ -274,44 +304,169 @@ server <- function(input, output, session) {
     seleccionados(nuevo_vector)
   })
   
-  # 1.4. Re-dibujar capa dinámicas en mapa_interactivo
+  # Resaltar Polígonos Seleccionados
   observe({
     vector_actual <- seleccionados()
     
-    leafletProxy("mapa_interactivo") %>%
-      clearGroup("seleccion_roja")
+    proxy <- leafletProxy("mapa_interactivo")
+    proxy %>% clearGroup("seleccion_roja")
     
     if (length(vector_actual) > 0) {
       poly_seleccionados <- poligonosV2 %>% filter(id %in% vector_actual)
       
-      leafletProxy("mapa_interactivo") %>%
+      proxy %>%
         addPolygons(
           data        = poly_seleccionados,
-          layerId     = ~id,
+          layerId     = ~paste0("sel_", id),
           group       = "seleccion_roja",
           fillColor   = "orange",
-          fillOpacity = 0.75,
+          fillOpacity = 0.6,
           color       = "purple",
           weight      = 2.5,
-          label       = ~paste("Zona:", id, " | Zona:", Cluster)
+          label       = ~paste("Zona:", id, " | Cluster:", Cluster)
         )
     }
   })
-  ##1.4.1. Valuebox dinámico original
-  output$box_beneficiarios <- renderValueBox({
-    lista_ids <- seleccionados()
+  
+  ##--------------------------------------------------------------------------##
+  ## 2. Cargar Opciones de Filtros
+  ##--------------------------------------------------------------------------##
+  observe({
+    req(rutasv2R1)
     
-    if (length(lista_ids) == 0) {
-      poligonos_filtrados <- poligonosV2
-      rutas_filtradas     <- rutasv2R1
-      subtitulo_caja      <- "Consolidado Total (Toda la Ciudad)"
-      color_caja          <- "navy"
-    } else {
-      poligonos_filtrados <- poligonosV2 %>% filter(id %in% lista_ids)
-      rutas_filtradas     <- rutasv2R1 %>% filter(Id_Hexagono %in% lista_ids)
-      subtitulo_caja      <- paste("Acumulado en", length(lista_ids), "hexágonos seleccionados")
-      color_caja          <- "orange"
+    opciones_rutas     <- sort(unique(na.omit(rutasv2R1$SR_Tip_Ruta)))
+    opciones_vehiculos <- sort(unique(na.omit(rutasv2R1$SR_Veh_Aj_2)))
+    
+    updateSelectizeInput(
+      session, 
+      "filtro_tipo_ruta", 
+      choices  = opciones_rutas, 
+      selected = NULL, 
+      server   = TRUE
+    )
+    
+    updateSelectizeInput(
+      session, 
+      "filtro_tipo_vehiculo", 
+      choices  = opciones_vehiculos, 
+      selected = NULL, 
+      server   = TRUE
+    )
+  })
+  
+  ##--------------------------------------------------------------------------##
+  ## 3. Reactivo de Filtrado Conjunto (Espacial + Controles UI)
+  ##--------------------------------------------------------------------------##
+  rutas_filtradas_reactivas <- reactive({
+    req(rutasv2R1)
+    datos <- rutasv2R1
+    
+    # 1. Filtro Espacial (Polígonos seleccionados por el campo Id_Hexagono)
+    lista_ids <- seleccionados()
+    if (length(lista_ids) > 0) {
+      datos <- datos %>% filter(as.character(Id_Hexagono) %in% lista_ids)
     }
+    
+    # 2. Filtro por Tipo de Ruta
+    if (!is.null(input$filtro_tipo_ruta) && length(input$filtro_tipo_ruta) > 0) {
+      datos <- datos %>% filter(SR_Tip_Ruta %in% input$filtro_tipo_ruta)
+    }
+    
+    # 3. Filtro por Tipo de Vehículo
+    if (!is.null(input$filtro_tipo_vehiculo) && length(input$filtro_tipo_vehiculo) > 0) {
+      datos <- datos %>% filter(SR_Veh_Aj_2 %in% input$filtro_tipo_vehiculo)
+    }
+    
+    # 4. LIMPIEZA CRÍTICA: Filtrar geometrías vacías o no válidas que rompen addPolylines
+    if (inherits(datos, "sf") && nrow(datos) > 0) {
+      datos <- datos %>% 
+        filter(!st_is_empty(.)) %>%    # Remueve geometrías vacías
+        sf::st_make_valid()           # Corrige posibles geometrías corruptas
+    }
+    
+    return(datos)
+  })
+
+  ##--------------------------------------------------------------------------##
+  ## 3.1 Dibuja y Colorea las Rutas en el Mapa Interactivo Principal
+  ##--------------------------------------------------------------------------##
+  observe({
+    # Validar que los datos y los seleccionados existan
+    ids <- seleccionados()
+    if (length(ids) == 0) {
+      leafletProxy("mapa_interactivo") %>% 
+        clearGroup("Rutas Filtradas") %>% 
+        clearControls()
+      return()
+    }
+    
+    rutas_sub <- rutas_filtradas_reactivas()
+    proxy     <- leafletProxy("mapa_interactivo")
+    
+    proxy %>% 
+      clearGroup("Rutas Filtradas") %>% 
+      clearControls()
+    
+    # Asegurar que hay filas válidas para graficar
+    if (!is.null(rutas_sub) && nrow(rutas_sub) > 0) {
+      
+      # Determinar variable de color de forma segura
+      var_color <- "SR_Tip_Ruta"
+      if (!is.null(input$var_color_ruta) && is.character(input$var_color_ruta) && nzchar(input$var_color_ruta)) {
+        var_color <- input$var_color_ruta
+      }
+      
+      # Validar si la columna existe en el dataset
+      if (var_color %in% names(rutas_sub)) {
+        
+        # Omitir valores NA de la paleta
+        valores_unicos <- sort(unique(na.omit(rutas_sub[[var_color]])))
+        
+        if (length(valores_unicos) > 0) {
+          paleta <- colorFactor(palette = "Set1", domain = valores_unicos)
+          
+          titulo_leyenda <- if (identical(var_color, "SR_Tip_Ruta")) "Tipo de Ruta" else "Tipo de Vehículo"
+          
+          proxy %>%
+            addPolylines(
+              data        = rutas_sub,
+              group       = "Rutas Filtradas",
+              color       = ~paleta(get(var_color)),
+              weight      = 3.5,
+              opacity     = 0.85,
+              popup       = ~paste0(
+                "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
+                "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
+                "<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
+                "<b>Distancia: </b>", round(Dis_ruta_m / 1000, 2), " Km"
+              )
+            ) %>%
+            addLegend(
+              position = "bottomright",
+              pal      = paleta,
+              values   = rutas_sub[[var_color]],
+              title    = titulo_leyenda,
+              opacity  = 0.9
+            )
+        }
+      }
+    }
+  })
+  
+  ##--------------------------------------------------------------------------##
+  ## 4. ValueBox Informativo Superior
+  ##--------------------------------------------------------------------------##
+  output$box_beneficiarios <- renderValueBox({
+    rutas_filtradas <- rutas_filtradas_reactivas()
+    lista_ids       <- seleccionados()
+    
+    subtitulo_caja <- if (length(lista_ids) == 0) {
+      "Consolidado Total (Toda la Ciudad)"
+    } else {
+      paste("Acumulado en", length(lista_ids), "hexágonos seleccionados")
+    }
+    
+    color_caja <- if (length(lista_ids) == 0) "navy" else "orange"
     
     total_ben <- if (!is.null(rutas_filtradas$SR_TotalEst)) {
       sum(rutas_filtradas$SR_TotalEst, na.rm = TRUE)
@@ -325,12 +480,9 @@ server <- function(input, output, session) {
     
     ben_txt   <- format(total_ben, big.mark = ",")
     rutas_txt <- format(total_rutas, big.mark = ",")
-    km_txt    <- format(round(total_km/1000,0), big.mark = ",")
-    print("Calculos exitosos")
-    print(ben_txt)
-    print(rutas_txt)
-    print(km_txt)
-    valor_resumen <- paste(ben_txt, " Beneficiarios |", rutas_txt, " Rutas| ", km_txt, " km")
+    km_txt    <- format(round(total_km / 1000, 0), big.mark = ",")
+    
+    valor_resumen <- paste(ben_txt, " Beneficiarios |", rutas_txt, " Rutas |", km_txt, " Km")
     
     valueBox(
       value    = valor_resumen,
@@ -340,19 +492,84 @@ server <- function(input, output, session) {
     )
   })
   
+  ##--------------------------------------------------------------------------##
+  ## 5. Tabla Cruzada (Filas: Tipos de Vehículo | Columnas: Tipos de Ruta)
+  ##--------------------------------------------------------------------------##
+  output$tabla_resumen_rutas <- DT::renderDataTable({
+    datos <- rutas_filtradas_reactivas()
+    
+    # Validar que existan datos tras aplicar los filtros
+    if (nrow(datos) == 0) {
+      return(DT::datatable(
+        data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada."),
+        rownames = FALSE,
+        options = list(dom = 't')
+      ))
+    }
+    
+    # 1. Agrupar y pivotear los datos base
+    resumen_crosstab <- datos %>% 
+      st_drop_geometry() %>% 
+      filter(!is.na(SR_Veh_Aj_2), !is.na(SR_Tip_Ruta)) %>% 
+      group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>% 
+      summarise(Distancia_Total_Km = sum(Dis_ruta_m, na.rm = TRUE) / 1000, .groups = "drop") %>% 
+      tidyr::pivot_wider(
+        names_from  = SR_Tip_Ruta, 
+        values_from = Distancia_Total_Km,
+        values_fill = 0
+      ) %>% 
+      rename(`Tipo Vehículo` = SR_Veh_Aj_2)
+    
+    # 2. Agregar Columna "Total" (Suma horizontal por fila)
+    resumen_crosstab <- resumen_crosstab %>% 
+      mutate(Total = rowSums(across(where(is.numeric)), na.rm = TRUE))
+    
+    # 3. Redondear valores a 2 decimales
+    resumen_crosstab <- resumen_crosstab %>% 
+      mutate(across(where(is.numeric), ~ round(.x, 2)))
+    
+    # 4. Crear Fila "Total" (Suma vertical por columna)
+    fila_total <- resumen_crosstab %>% 
+      summarise(across(where(is.numeric), ~ round(sum(.x, na.rm = TRUE), 2))) %>% 
+      mutate(`Tipo Vehículo` = "Total")
+    
+    # 5. Unir la fila de Totales al final del data.frame
+    resumen_crosstab <- bind_rows(resumen_crosstab, fila_total)
+    
+    # 6. Renderizar tabla con DT y resaltar totales
+    DT::datatable(
+      resumen_crosstab,
+      rownames = FALSE,
+      options = list(
+        pageLength = 15,
+        scrollX = TRUE,
+        language = list(
+          url = "//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json"
+        ),
+        dom = "t" # Tabla limpia sin controles redundantes
+      ),
+      class = "cell-border stripe hover compact"
+    ) %>% 
+      # Resaltar la fila "Total"
+      DT::formatStyle(
+        'Tipo Vehículo',
+        target = 'row',
+        fontWeight = DT::styleEqual('Total', 'bold'),
+        backgroundColor = DT::styleEqual('Total', '#f0f0f0')
+      ) %>% 
+      # Resaltar la columna "Total"
+      DT::formatStyle(
+        'Total',
+        fontWeight = 'bold',
+        backgroundColor = '#f9f9f9'
+      )
+  })
   
+  ##--------------------------------------------------------------------------##
+  ## 6. Lógica de Pestaña: Mapa de Clústeres
+  ##--------------------------------------------------------------------------##
+  seleccionados_cluster <- reactiveVal(character(0))
   
-  
-  
-  
-  # 1. Contenedores reactivos
-  
-  seleccionados_cluster <- reactiveVal(character(0)) # Para mapa_clusteres
-  
-  
-  
-  
-  # 3. Render base de mapa_clusteres (Coloreado por 'nom_patio')
   output$mapa_clusteres <- renderLeaflet({
     leaflet(poligonosV3) %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
@@ -363,7 +580,7 @@ server <- function(input, output, session) {
         color       = "#2c3e50",
         weight      = 1.5,
         group       = "Zonas hexagonales",
-        label       = ~paste("Zona:", id, "| Zona:", Cluster)
+        label       = ~paste("Zona:", id, "| Cluster:", Cluster)
       ) %>%
       addLegend(
         pal      = factpal_patios,
@@ -377,21 +594,15 @@ server <- function(input, output, session) {
       )
   })
   
-  # 4. Capturar clic en mapa_clusteres y alternar estado (Toggle ON/OFF de forma segura)
   observeEvent(input$mapa_clusteres_shape_click, {
-    click <- input$mapa_clusteres_shape_click
-    
-    # Validar que el objeto cliqueado tenga un id válido
+    click  <- input$mapa_clusteres_shape_click
     req(click$id)
-    
-    # Extraer y limpiar el ID (remover 'sel_' si se hace clic sobre la capa destacada)
     raw_id <- as.character(click$id)
     
     if (length(raw_id) > 0 && nzchar(raw_id)) {
-      id_cliqueado <- gsub("^sel_", "", raw_id)
+      id_cliqueado  <- gsub("^sel_", "", raw_id)
       vector_actual <- seleccionados_cluster()
       
-      # Alternar selección
       if (id_cliqueado %in% vector_actual) {
         nuevo_vector <- setdiff(vector_actual, id_cliqueado)
       } else {
@@ -402,60 +613,46 @@ server <- function(input, output, session) {
     }
   })
   
-  # 5. Actualizar dinámicamente resalte y rutas activas en mapa_clusteres
   observe({
     vector_actual <- seleccionados_cluster()
     proxy <- leafletProxy("mapa_clusteres")
     
-    # A) SIEMPRE LIMPIAR CAPAS DINÁMICAS PREVIAS
-    # Al borrar el grupo "seleccion_cluster", se retira el color rojo y 
-    # vuelve a quedar visible el polígono original con el color de su 'nom_patio'.
     proxy %>%
       clearGroup("seleccion_cluster") %>%
       clearGroup("Rutas escolares")
     
-    # B) DIBUJAR ÚNICAMENTE SI HAY ELEMENTOS EN EL VECTOR
     if (length(vector_actual) > 0) {
-      
-      # 1. Resaltar polígonos seleccionados (Capa roja superpuesta)
-      poly_sel <- poligonos %>% filter(id %in% vector_actual)
+      poly_sel <- poligonosV3 %>% filter(id %in% vector_actual)
       
       proxy %>%
         addPolygons(
           data        = poly_sel,
-          layerId     = ~paste0("sel_", id), # Mantiene el ID rastreable
+          layerId     = ~paste0("sel_", id),
           group       = "seleccion_cluster",
-          fillColor   = "#e74c3c",           # Rojo de selección
+          fillColor   = "#e74c3c",
           fillOpacity = 0.85,
           color       = "#900C3F",
           weight      = 3,
           label       = ~paste("SELECCIONADO - Zona:", id, "| Patio:", nom_patio)
         )
       
-      # 2. Filtrar y dibujar ÚNICAMENTE las rutas correspondientes a los polígonos activos
-      rutas_activas <- rutas %>% filter(as.character(Vertices_g) %in% vector_actual)
+      rutas_activas <- rutasv2 %>% filter(as.character(id_2) %in% vector_actual)
       
       if (nrow(rutas_activas) > 0) {
         proxy %>%
           addPolylines(
             data        = rutas_activas,
-            color       = "#2ecc71",         # Verde para las rutas
+            color       = "#2ecc71",
             weight      = 3,
             opacity     = 0.9,
             group       = "Rutas escolares",
-            label       = ~paste("Ruta:", ifelse(is.na(Ruta_fix), "Sin nombre", Ruta_fix))
+            label       = ~paste("Ruta:", ifelse(is.na(CodigoRuta), "Sin nombre", CodigoRuta))
           )
       }
     }
   })
-  
-  
-  
-
 }
-
 ##----------------------------------------------------------------------------##
 ## Ejecutar App
 ##----------------------------------------------------------------------------##
-
 shinyApp(ui = ui, server = server)
