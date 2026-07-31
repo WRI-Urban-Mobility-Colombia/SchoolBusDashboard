@@ -23,17 +23,17 @@ library(plotly)
 ## WD
 setwd(here())
 ## Polígonos
-poligonos <-st_read("Assets/GeoJSON/09_hexagonos_Patios_Cargadores.geojson")%>%
-  st_transform(crs =4326)
+#poligonos <-st_read("Assets/GeoJSON/09_hexagonos_Patios_Cargadores.geojson")%>%
+#  st_transform(crs =4326)
 ## PoligonosV02
 poligonosV2 <-st_read("Assets/GeoJSON/10_Hexagonos_clusteres_filtrados.geojson")%>%
   st_transform(crs =4326)
 ## Base de datos
 ## Rutas
-rutas <-st_read("Assets/GeoJSON/09_Ruta_sabanas_id_hexagonoV2.geojson")%>%
-  st_transform(crs = 4326) %>% 
-  filter(!st_is_empty(.)) %>%
-  subset(st_geometry_type(.)%in%c("LINESTRING","MULTILINESTRING"))
+#rutas <-st_read("Assets/GeoJSON/09_Ruta_sabanas_id_hexagonoV2.geojson")%>%
+#  st_transform(crs = 4326) %>% 
+#  filter(!st_is_empty(.)) %>%
+#  subset(st_geometry_type(.)%in%c("LINESTRING","MULTILINESTRING"))
 ## Rutas V2
 rutasv2 <-st_read("Assets/GeoJSON/09_Ruta_sabanas_id_hexagonoV2.geojson")%>%
   st_transform(crs = 4326) %>% 
@@ -51,7 +51,7 @@ rutasDB <- read.csv2("Assets/CSV/Rutas_EX.csv",encoding = "UTF-8", sep = ";")
 ## Paleta de colores para 'nom_patio' en mapa_clusteres
 factpal_patios <- colorFactor(
   palette = "Set3", 
-  domain  = poligonos$nom_patio
+  domain  = poligonosV2$nom_patio
 )
 ##----------------------------------------------------------------------------##
 ##Preprocesamiento
