@@ -29,9 +29,6 @@ setwd(here())
 poligonosV2 <- readRDS("Assets/RDS/poligonosV2.rds")
 rutasv2 <- readRDS("Assets/RDS/rutas.rds")
 
-## Datos_Rutas
-rutasDB <- read.csv2("Assets/CSV/Rutas_EX.csv",encoding = "UTF-8", sep = ";")
-
 ##----------------------------------------------------------------------------##
 ##Variables adicionales
 ##----------------------------------------------------------------------------##
