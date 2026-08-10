@@ -34,8 +34,8 @@ rutasv2 <- readRDS("Assets/RDS/rutas.rds")
 ##----------------------------------------------------------------------------##
 ## Paleta de colores para 'nom_patio' en mapa_clusteres
 factpal_patios <- colorFactor(
-  palette = "Set3", 
-  domain  = poligonosV2$nom_patio
+  palette = "Accent", 
+  domain  = poligonosV2$Cluster
 )
 ##----------------------------------------------------------------------------##
 ##Preprocesamiento
@@ -56,12 +56,12 @@ poligonosV3 <-poligonosV2 %>%filter(NoRutas >0)
 
 ui <- dashboardPage(
 
-  title = "Geoselector de rutas escolares",
+  title = "Visor de rutas escolares",
   
   ## Header
   header = dashboardHeader(
     title = tagList(
-      span(class = "logo-lg", "Geoselector"),
+      span(class = "logo-lg", "Rutas Escolares"),
       span(class = "logo-mini", "WRI GS")
     ),
     rightUi = userOutput("skin_dropdown")
@@ -74,9 +74,9 @@ ui <- dashboardPage(
       id = "tab_seleccionada",
       
       menuItem("Introducción", tabName = "tab_intro", icon = icon("info-circle")),
-      menuItem("Explore la red", tabName = "tab_mapa", icon = icon("binoculars")),
-      menuItem("Clústeres identificados", tabName = "tab_mapa2", icon = icon("map")),
       menuItem("Documentación", tabName = "documentacion", icon = icon("users")),
+      menuItem("Cree sus zonas", tabName = "tab_mapa", icon = icon("binoculars")),
+      menuItem("Explore zonas creadas", tabName = "tab_mapa2", icon = icon("map")),
       menuItem("Créditos", tabName = "creditos", icon = icon("users"))
     )
   ),
@@ -113,7 +113,7 @@ ui <- dashboardPage(
           p("Esta herramienta permite seleccionar frentes de trabajo y analizar rutas escolares en Bogotá.")          
         )
       ),
-      ## Pestaña 2: Mapa
+      ## Pestaña 2: Mapa de zonas creadas
       tabItem(
         tabName = "tab_mapa",
         
@@ -209,7 +209,7 @@ ui <- dashboardPage(
         )
       ),
       
-      ## Pestaña 3: Clústeres identificados
+      ## Pestaña 3: Explore sus zonas
       tabItem(
         tabName = "tab_mapa2",
         fluidRow(
@@ -260,19 +260,18 @@ ui <- dashboardPage(
 
 server <- function(input, output, session) {
   
-  ##--------------------------------------------------------------------------##
-  ## 1. Mapa Interactivo y Selección
-  ##--------------------------------------------------------------------------##
+##--------------------------------------------------------------------------##
+## 1. Mapa Interactivo y Selección
+##--------------------------------------------------------------------------##
   seleccionados <- reactiveVal(character(0)) # Almacena IDs de polígonos seleccionados
-  
   output$mapa_interactivo <- renderLeaflet({
     leaflet(poligonosV2) %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
       addPolygons(
         layerId     = ~id,
-        fillColor   = "#3498db",
-        fillOpacity = 0.4,
-        color       = "#2c3e50",
+        fillColor   = "#ffffbf",
+        fillOpacity = 0.5,
+        color       = "#fc8d59",
         weight      = 1.5,
         label       = ~paste("Polígono:", id, " | Cluster:", Cluster)
       ) %>%
@@ -562,91 +561,29 @@ server <- function(input, output, session) {
       )
   })
   
-  ##--------------------------------------------------------------------------##
-  ## 6. Lógica de Pestaña: Mapa de Clústeres
-  ##--------------------------------------------------------------------------##
+##--------------------------------------------------------------------------##
+## 2. Lógica de Pestaña: Mapa de Clústeres
+##--------------------------------------------------------------------------##
   seleccionados_cluster <- reactiveVal(character(0))
   
   output$mapa_clusteres <- renderLeaflet({
-    leaflet(poligonosV3) %>%
+    leaflet(poligonosV2) %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
       addPolygons(
         layerId     = ~id,
-        fillColor   = ~factpal_patios(nom_patio),
-        fillOpacity = 0.2,
-        color       = "#2c3e50",
+        fillColor   = ~factpal_patios(Cluster),
+        fillOpacity = 0.5,
+        color       = "#f7f7f7",
         weight      = 1.5,
         group       = "Zonas hexagonales",
         label       = ~paste("Zona:", id, "| Cluster:", Cluster)
       ) %>%
       addLegend(
         pal      = factpal_patios,
-        values   = ~nom_patio,
-        title    = "Nombre del Patio",
+        values   = ~Cluster,
+        title    = "Grupo de rutas",
         position = "bottomright"
-      ) %>%
-      addLayersControl(
-        overlayGroups = c("Zonas hexagonales", "Rutas escolares"),
-        options       = layersControlOptions(collapsed = FALSE)
       )
-  })
-  
-  observeEvent(input$mapa_clusteres_shape_click, {
-    click  <- input$mapa_clusteres_shape_click
-    req(click$id)
-    raw_id <- as.character(click$id)
-    
-    if (length(raw_id) > 0 && nzchar(raw_id)) {
-      id_cliqueado  <- gsub("^sel_", "", raw_id)
-      vector_actual <- seleccionados_cluster()
-      
-      if (id_cliqueado %in% vector_actual) {
-        nuevo_vector <- setdiff(vector_actual, id_cliqueado)
-      } else {
-        nuevo_vector <- c(vector_actual, id_cliqueado)
-      }
-      
-      seleccionados_cluster(nuevo_vector)
-    }
-  })
-  
-  observe({
-    vector_actual <- seleccionados_cluster()
-    proxy <- leafletProxy("mapa_clusteres")
-    
-    proxy %>%
-      clearGroup("seleccion_cluster") %>%
-      clearGroup("Rutas escolares")
-    
-    if (length(vector_actual) > 0) {
-      poly_sel <- poligonosV3 %>% filter(id %in% vector_actual)
-      
-      proxy %>%
-        addPolygons(
-          data        = poly_sel,
-          layerId     = ~paste0("sel_", id),
-          group       = "seleccion_cluster",
-          fillColor   = "#e74c3c",
-          fillOpacity = 0.85,
-          color       = "#900C3F",
-          weight      = 3,
-          label       = ~paste("SELECCIONADO - Zona:", id, "| Patio:", nom_patio)
-        )
-      
-      rutas_activas <- rutasv2 %>% filter(as.character(id_2) %in% vector_actual)
-      
-      if (nrow(rutas_activas) > 0) {
-        proxy %>%
-          addPolylines(
-            data        = rutas_activas,
-            color       = "#2ecc71",
-            weight      = 3,
-            opacity     = 0.9,
-            group       = "Rutas escolares",
-            label       = ~paste("Ruta:", ifelse(is.na(CodigoRuta), "Sin nombre", CodigoRuta))
-          )
-      }
-    }
   })
 }
 ##----------------------------------------------------------------------------##
