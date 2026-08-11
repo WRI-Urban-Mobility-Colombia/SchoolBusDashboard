@@ -18,6 +18,7 @@ library(here)
 library(shinyEffects)
 library(plotly)
 library(DT)
+library(janitor)
 
 ##----------------------------------------------------------------------------##
 ##Abrir archivos necesarios
@@ -217,13 +218,55 @@ ui <- dashboardPage(
           column(width = 4, valueBoxOutput("box_beneficiarios2", width = 12)),
           column(width = 4, valueBoxOutput("box_beneficiarios3", width = 12))
         ),
-        box(
-          title = "Explorar clústeres",
-          status = "primary",
-          solidHeader = TRUE,
-          width = 12,
-          collapsible = FALSE,
-          leafletOutput("mapa_clusteres")
+        column(
+          width = 7,
+          box(
+            title = "Explorar clústeres",
+            status = "primary",
+            solidHeader = TRUE,
+            width = 12,
+            collapsible = FALSE,
+            leafletOutput("mapa_clusteres")
+          )
+        ),
+        column(
+          width = 5,
+          # caja de controles del mapa
+          box(
+            width = 12,
+            title = "Filtros de clústeres",
+            status = "primary",
+            solidHeader = TRUE,
+            selectInput(
+              inputId = "filtro_cluster",
+              label = "Seleccione la zona",
+              choices = c(sort(unique(poligonosV2$Cluster))),
+              selected = "Todos",
+              multiple = TRUE
+            ),
+            selectInput(
+              inputId = "filtro_tipo_ruta",
+              label = "Seleccione los tipos de ruta",
+              choices = c("Todos",sort(unique(rutasv2R1$SR_Tip_Ruta))),
+              selected = "Todos",
+              multiple = TRUE
+            ),
+            selectInput(
+              inputId = "filtro_tipo_veh",
+              label = "Seleccione el tipo de vehículo",
+              choices = c("Todos", sort(unique(rutasv2R1$SR_Veh_Aj_2))),
+              selected = "Todos",
+              multiple = TRUE
+            )
+          ),
+          ## Cuadro de resultados
+          box(
+            width = 12,
+            title = "Resultados de distancias",
+            status = "primary",
+            solidHeader = TRUE,
+            DTOutput("tabla_resumen_km")
+          )
         )
       ),
       
@@ -567,7 +610,8 @@ server <- function(input, output, session) {
   seleccionados_cluster <- reactiveVal(character(0))
   
   output$mapa_clusteres <- renderLeaflet({
-    leaflet(poligonosV2) %>%
+    datos <- poligonos_filtrados()
+    leaflet(datos) %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
       addPolygons(
         layerId     = ~id,
@@ -585,7 +629,71 @@ server <- function(input, output, session) {
         position = "bottomright"
       )
   })
+## 2.1. Lógica de filtrar zonas
+  poligonos_filtrados <- reactive({
+    # Si se selecciona "Todos" o no hay nada seleccionado, retorna todo el dataset
+    if (is.null(input$filtro_cluster) || "Todos" %in% input$filtro_cluster) {
+      return(poligonosV2)
+    } else {
+      return(poligonosV2[poligonosV2$Cluster %in% input$filtro_cluster, ])
+    }
+  })
+
+## 2.2. Filtrar rutas por poligonos
+
+rutasSubDataset <- reactive({
+  # Activa reactividad previa 2.1.
+  req(poligonos_filtrados())
+  ids_presentes <- poligonos_filtrados()$id
+  ## Filtra en rutas y almacena en rutasSubDataset
+  datos_filtrados <-rutasv2R1 %>%filter(Id_Hexagono %in% ids_presentes)
+  # Filtro por tipo de ruta
+  print("Entrando al filtro de la base de datos de las rutas")
+  if (!is.null(input$filtro_tipo_ruta) && !"Todos" %in% input$filtro_tipo_ruta) {
+    datos_filtrados <- datos_filtrados %>% 
+      filter(SR_Tip_Ruta %in% input$filtro_tipo_ruta)
+  }
+  
+  # Filtro por tipo de vehículo
+  if (!is.null(input$filtro_tipo_veh) && !"Todos" %in% input$filtro_tipo_veh) {
+    datos_filtrados <- datos_filtrados %>% 
+      filter(SR_Veh_Aj_2 %in% input$filtro_tipo_veh)
+  }
+  
+  return(datos_filtrados)
+})
+## 2.3.Generación de tablas y gráficas
+## 2.3.1. Km
+## 2.3.1.1. Pivot table Km
+output$tabla_resumen_km <- renderDT({
+  req(rutasSubDataset())
+  print(rutasSubDataset)
+  # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
+  if (nrow(rutasSubDataset()) == 0) {
+    return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
+  }
+  print(rutasSubDataset)
+  tabla_resumen <- rutasSubDataset() %>%
+    sf::st_drop_geometry() %>%
+    group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
+    summarise(Total_KM = sum(Dis_ruta_m, na.rm = TRUE)/1000, .groups = "drop") %>%
+    pivot_wider(
+      names_from  = SR_Tip_Ruta,
+      values_from = Total_KM,
+      values_fill = 0
+    ) %>% 
+    rename("Tipo de Vehículo" = SR_Veh_Aj_2)%>% 
+  janitor::adorn_totals(where = c("row", "col"), fill = "-", na.rm = TRUE, name = "Total")
+  
+  datatable(
+    tabla_resumen,
+    options = list(pageLength = 10, dom = 't', scrollX = TRUE),
+    rownames = FALSE
+  ) %>% 
+    formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
+})
 }
+
 ##----------------------------------------------------------------------------##
 ## Ejecutar App
 ##----------------------------------------------------------------------------##
