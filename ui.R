@@ -96,7 +96,7 @@ ui <- dashboardPage(
           background-color: #f4f6f9;
         }
         #mapa_interactivo, #mapa_clusteres {
-          height: calc(100vh - 200px) !important;
+          height: calc(95vh - 200px) !important;
         }
 
       "))
@@ -236,6 +236,7 @@ ui <- dashboardPage(
             width = 12,
             title = "Filtros de clústeres",
             status = "primary",
+            collapsible = TRUE,
             solidHeader = TRUE,
             selectInput(
               inputId = "filtro_cluster",
@@ -245,27 +246,47 @@ ui <- dashboardPage(
               multiple = TRUE
             ),
             selectInput(
-              inputId = "filtro_tipo_ruta",
+              inputId = "filtro_tipo_ruta_clus",
               label = "Seleccione los tipos de ruta",
               choices = c("Todos",sort(unique(rutasv2R1$SR_Tip_Ruta))),
               selected = "Todos",
               multiple = TRUE
             ),
             selectInput(
-              inputId = "filtro_tipo_veh",
+              inputId = "filtro_tipo_veh_clus",
               label = "Seleccione el tipo de vehículo",
               choices = c("Todos", sort(unique(rutasv2R1$SR_Veh_Aj_2))),
               selected = "Todos",
               multiple = TRUE
             )
           ),
-          ## Cuadro de resultados
+          ## Cuadro de rutas
           box(
             width = 12,
-            title = "Resultados de distancias",
+            title = "Cantidad de rutas",
             status = "primary",
             solidHeader = TRUE,
+            collapsible = TRUE,
+            DTOutput("CL_tabla_rutas")
+          ),
+          ## Cuadro de resultados_ Km semanales
+          box(
+            width = 12,
+            title = "Distancias (Km) semanales por tipo de vehiculo y tipo de ruta",
+            status = "primary",
+            solidHeader = TRUE,
+            collapsible = TRUE,
             DTOutput("tabla_resumen_km")
+          ),
+          ## Cuadro de vehículos
+          box(
+            width = 12,
+            title = "Cantidad de vehículos (Aproximado al siguiente entero)",
+            status = "primary",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            h5("Parte de los factores de utilización promedio"),
+            DTOutput("CL_tabla_veh")
           )
         )
       ),
@@ -649,15 +670,15 @@ rutasSubDataset <- reactive({
   datos_filtrados <-rutasv2R1 %>%filter(Id_Hexagono %in% ids_presentes)
   # Filtro por tipo de ruta
   print("Entrando al filtro de la base de datos de las rutas")
-  if (!is.null(input$filtro_tipo_ruta) && !"Todos" %in% input$filtro_tipo_ruta) {
+  if (!is.null(input$filtro_tipo_ruta_clus) && !"Todos" %in% input$filtro_tipo_ruta_clus) {
     datos_filtrados <- datos_filtrados %>% 
-      filter(SR_Tip_Ruta %in% input$filtro_tipo_ruta)
+      filter(SR_Tip_Ruta %in% input$filtro_tipo_ruta_clus)
   }
   
   # Filtro por tipo de vehículo
-  if (!is.null(input$filtro_tipo_veh) && !"Todos" %in% input$filtro_tipo_veh) {
+  if (!is.null(input$filtro_tipo_veh_clus) && !"Todos" %in% input$filtro_tipo_veh_clus) {
     datos_filtrados <- datos_filtrados %>% 
-      filter(SR_Veh_Aj_2 %in% input$filtro_tipo_veh)
+      filter(SR_Veh_Aj_2 %in% input$filtro_tipo_veh_clus)
   }
   
   return(datos_filtrados)
@@ -687,12 +708,121 @@ output$tabla_resumen_km <- renderDT({
   
   datatable(
     tabla_resumen,
-    options = list(pageLength = 10, dom = 't', scrollX = TRUE),
+    extensions = 'Buttons', ## Activa botones
+    options = list(
+      pageLength = 10,
+      #dom = 't',
+      scrollX = TRUE,
+      dom = 'Bfrtip',
+      buttons = list(
+        list(
+          extend = 'csv',
+          filename = '01_dist_km_semanal',
+          text = 'Descargar CSV',
+          fieldSeparator = ";"
+        )
+      )
+    ),
     rownames = FALSE
   ) %>% 
     formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
 })
+## 2.3.1.2. Pivot table Cantidad de rutas
+output$CL_tabla_rutas <- renderDT({
+  req(rutasSubDataset())
+  
+  # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
+  if (nrow(rutasSubDataset()) == 0) {
+    return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
+  }
+  
+  tabla_resumen <- rutasSubDataset() %>%
+    sf::st_drop_geometry() %>%
+    group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
+    summarise(Cantidad = n(), .groups = "drop") %>%
+    pivot_wider(
+      names_from  = SR_Tip_Ruta,
+      values_from = Cantidad,
+      values_fill = 0
+    ) %>% 
+    rename("Tipo de Vehículo" = SR_Veh_Aj_2) %>% 
+    janitor::adorn_totals(where = c("row", "col"), fill = "-", na.rm = TRUE, name = "Total")
+  
+  datatable(
+    tabla_resumen,
+    extensions = 'Buttons',
+    options = list(
+      pageLength = 10,
+      scrollX = TRUE,
+      dom = 'Bfrtip',
+      buttons = list(
+        list(
+          extend = 'csv',
+          filename = '01_conteo_rutas',
+          text = 'Descargar CSV',
+          fieldSeparator = ";"
+        )
+      )
+    ),
+    rownames = FALSE
+  )
+})
+## 2.3.1.2. Pivot table Cantidad de vehículos
+output$CL_tabla_veh <- renderDT({
+  req(rutasSubDataset())
+  
+  # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
+  if (nrow(rutasSubDataset()) == 0) {
+    return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
+  }
+  
+  tabla_resumen <- rutasSubDataset() %>%
+    sf::st_drop_geometry() %>%
+    group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
+    summarise(Cantidad = n(), .groups = "drop") %>%
+    pivot_wider(
+      names_from  = SR_Tip_Ruta,
+      values_from = Cantidad,
+      values_fill = 0
+    ) %>% 
+    rename("Tipo de Vehículo" = SR_Veh_Aj_2) %>% 
+    # Modificación: Asignar factor por vehículo, dividir y redondear al siguiente entero (Mover a zona de variables pronto)
+    mutate(
+      factor = case_when(
+        toupper(`Tipo de Vehículo`) == "BUS"       ~ 1.5,
+        toupper(`Tipo de Vehículo`) == "BUSETA"    ~ 2.5,
+        toupper(`Tipo de Vehículo`) %in% c("MICROBÚS", "MICROBUS") ~ 1.5,
+        toupper(`Tipo de Vehículo`) == "VAN"       ~ 1.0,
+        toupper(`Tipo de Vehículo`) == "CAMIONETA" ~ 2.5,
+        TRUE ~ 1.0
+      ),
+      across(where(is.numeric) & !c(factor), ~ ceiling(.x / factor))
+    ) %>% 
+    select(-factor) %>% 
+    janitor::adorn_totals(where = c("row", "col"), fill = "-", na.rm = TRUE, name = "Total")
+  
+  datatable(
+    tabla_resumen,
+    extensions = 'Buttons',
+    options = list(
+      pageLength = 10,
+      scrollX = TRUE,
+      dom = 'Bfrtip',
+      buttons = list(
+        list(
+          extend = 'csv',
+          filename = '02_calculo_vehiculos_factor',
+          text = 'Descargar CSV',
+          fieldSeparator = ";"
+        )
+      )
+    ),
+    rownames = FALSE
+  )
+})
+
 }
+
 
 ##----------------------------------------------------------------------------##
 ## Ejecutar App
