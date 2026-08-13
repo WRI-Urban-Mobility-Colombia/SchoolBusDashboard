@@ -43,7 +43,20 @@ factpal_patios <- colorFactor(
 ##----------------------------------------------------------------------------##
 ## Filtrar solo recorrido R1
 
-rutasv2R1 <- rutasv2%>%filter(Recorrido_ == "R1")
+
+
+## Seleccionar R1 si existen duplicados para el mismo CodigoRuta; de lo contrario, conservar el registro disponible (R1 o R2)
+rutasv2R1 <- rutasv2 %>%
+  group_by(CodigoRuta) %>%
+  arrange(Recorrido_ == "R2") %>% # Ordena poniendo "R1" primero (FALSE < TRUE)
+  slice(1) %>%
+  ungroup()
+print(rutasv2R1)
+
+## Calcular variables semanales (distancia semanal y horas semanales)
+
+rutasv2R1 <- rutasv2R1 %>% mutate(disRutaSem = Dis_ruta_m * SR_Tot_Dias)
+rutasv2R1 <- rutasv2R1 %>% mutate(disHorasSem = SR_Toal_H * SR_Tot_Dias)
 
 
 poligonosV2$NoRutas <- sapply(poligonosV2$id, function(x) sum(rutasv2R1$id_2 == x, na.rm = TRUE))
@@ -96,7 +109,7 @@ ui <- dashboardPage(
           background-color: #f4f6f9;
         }
         #mapa_interactivo, #mapa_clusteres {
-          height: calc(95vh - 200px) !important;
+          height: calc(90vh - 200px) !important;
         }
 
       "))
@@ -221,7 +234,7 @@ ui <- dashboardPage(
         column(
           width = 7,
           box(
-            title = "Explorar clústeres",
+            title = "Mapa de exploracion de clústeres",
             status = "primary",
             solidHeader = TRUE,
             width = 12,
@@ -237,6 +250,7 @@ ui <- dashboardPage(
             title = "Filtros de clústeres",
             status = "primary",
             collapsible = TRUE,
+            collapsed = FALSE,
             solidHeader = TRUE,
             selectInput(
               inputId = "filtro_cluster",
@@ -267,6 +281,7 @@ ui <- dashboardPage(
             status = "primary",
             solidHeader = TRUE,
             collapsible = TRUE,
+            collapsed = TRUE,
             DTOutput("CL_tabla_rutas")
           ),
           ## Cuadro de resultados_ Km semanales
@@ -276,6 +291,7 @@ ui <- dashboardPage(
             status = "primary",
             solidHeader = TRUE,
             collapsible = TRUE,
+            collapsed = TRUE,
             DTOutput("tabla_resumen_km")
           ),
           ## Cuadro de vehículos
@@ -285,9 +301,64 @@ ui <- dashboardPage(
             status = "primary",
             solidHeader = TRUE,
             collapsible = TRUE,
+            collapsed = TRUE,
             h5("Parte de los factores de utilización promedio"),
             DTOutput("CL_tabla_veh")
+          ),
+          box(
+            width = 12,
+            title = "Horas contratadas a la semana",
+            status = "primary",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            collapsed = TRUE,
+            h5("Total de horas en una semana"),
+            DTOutput("CL_tabla_horas")
           )
+        ),
+        ### Sección de demanda energética
+        box(
+          width = 12,
+          title = "Demanda energética e infraestructura",
+          status = 'primary',
+          solidHeader = TRUE,
+          collapsible = TRUE,
+          collapsed = TRUE,
+          h5("Demanda energética semanal"),
+          radioButtons(
+            inputId  = "demanda_tipo_calculo",
+            label    = "Método de cálculo:",
+            choices  = c("Promedio" = "promedio", "Factor de utilización diaria" = "factor"),
+            selected = "promedio",
+            inline   = TRUE
+          ),
+          conditionalPanel(
+            condition = "input.demanda_tipo_calculo == 'factor'",
+            column(
+              width = 4,
+              sliderInput(
+                inputId = "demanda_factor_slider",
+                label   = "Factor de ajuste/eficiencia: 1: Carga total semanal en 1 día a la semana, 0,2 carga promedio diaria (5 días a la semana)",
+                min     = 0.2,
+                max     = 1.0,
+                value   = 0.6,
+                step    = 0.2
+              )
+            )
+          ),
+          column(
+            width = 4,
+            sliderInput(
+              inputId = "horas_vent_carga",
+              label = "Elija las horas de la ventana de carga, suele ser similar a la duración de la jornada educativa",
+              min = 2,
+              max = 6,
+              value = 3,
+              step = 0.5
+            )
+          ),
+          plotlyOutput("CL_demanda_energetica", height = "350px"),
+          DTOutput("CL_demanda_energetica")
         )
       ),
       
@@ -362,6 +433,7 @@ server <- function(input, output, session) {
     }
     
     seleccionados(nuevo_vector)
+    print(nuevo_vector)
   })
   
   # Resaltar Polígonos Seleccionados
@@ -498,7 +570,7 @@ server <- function(input, output, session) {
                 "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
                 "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
                 "<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
-                "<b>Distancia: </b>", round(Dis_ruta_m / 1000, 2), " Km"
+                "<b>Distancia: </b>", round(disRutaSem/ 1000, 2), " Km"
               )
             ) %>%
             addLegend(
@@ -535,12 +607,12 @@ server <- function(input, output, session) {
     total_rutas <- nrow(rutas_filtradas)
     
     total_km <- if (!is.null(rutas_filtradas$Dis_ruta_m)) {
-      sum(rutas_filtradas$Dis_ruta_m, na.rm = TRUE)
+      sum(rutas_filtradas$disRutaSem, na.rm = TRUE)/1000
     } else { 0 }
     
     ben_txt   <- format(total_ben, big.mark = ",")
     rutas_txt <- format(total_rutas, big.mark = ",")
-    km_txt    <- format(round(total_km / 1000, 0), big.mark = ",")
+    km_txt    <- format(round(total_km, 0), big.mark = ",")
     
     valor_resumen <- paste(ben_txt, " Beneficiarios |", rutas_txt, " Rutas |", km_txt, " Km")
     
@@ -552,79 +624,54 @@ server <- function(input, output, session) {
     )
   })
   
-  ##--------------------------------------------------------------------------##
-  ## 5. Tabla Cruzada (Filas: Tipos de Vehículo | Columnas: Tipos de Ruta)
-  ##--------------------------------------------------------------------------##
-  output$tabla_resumen_rutas <- DT::renderDataTable({
-    datos <- rutas_filtradas_reactivas()
-    
-    # Validar que existan datos tras aplicar los filtros
-    if (nrow(datos) == 0) {
-      return(DT::datatable(
-        data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada."),
-        rownames = FALSE,
-        options = list(dom = 't')
-      ))
+##--------------------------------------------------------------------------##
+## 5. Tabla Cruzada (Filas: Tipos de Vehículo | Columnas: Tipos de Ruta)
+##--------------------------------------------------------------------------##
+  output$tabla_resumen_rutas <- renderDT({
+    req(rutas_filtradas_reactivas())
+    print(rutas_filtradas_reactivas())
+    # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
+    if (nrow(rutas_filtradas_reactivas()) == 0) {
+      return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
     }
-    
-    # 1. Agrupar y pivotear los datos base
-    resumen_crosstab <- datos %>% 
-      st_drop_geometry() %>% 
-      filter(!is.na(SR_Veh_Aj_2), !is.na(SR_Tip_Ruta)) %>% 
-      group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>% 
-      summarise(Distancia_Total_Km = sum(Dis_ruta_m, na.rm = TRUE) / 1000, .groups = "drop") %>% 
-      tidyr::pivot_wider(
-        names_from  = SR_Tip_Ruta, 
-        values_from = Distancia_Total_Km,
+    print(rutas_filtradas_reactivas)
+    tabla_resumen <- rutas_filtradas_reactivas() %>%
+      sf::st_drop_geometry() %>%
+      group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
+      summarise(Total_KM = sum(disRutaSem, na.rm = TRUE)/1000, .groups = "drop") %>%
+      pivot_wider(
+        names_from  = SR_Tip_Ruta,
+        values_from = Total_KM,
         values_fill = 0
       ) %>% 
-      rename(`Tipo Vehículo` = SR_Veh_Aj_2)
+      rename("Tipo de Vehículo" = SR_Veh_Aj_2)%>% 
+      janitor::adorn_totals(where = c("row", "col"), fill = "-", na.rm = TRUE, name = "Total")
     
-    # 2. Agregar Columna "Total" (Suma horizontal por fila)
-    resumen_crosstab <- resumen_crosstab %>% 
-      mutate(Total = rowSums(across(where(is.numeric)), na.rm = TRUE))
-    
-    # 3. Redondear valores a 2 decimales
-    resumen_crosstab <- resumen_crosstab %>% 
-      mutate(across(where(is.numeric), ~ round(.x, 2)))
-    
-    # 4. Crear Fila "Total" (Suma vertical por columna)
-    fila_total <- resumen_crosstab %>% 
-      summarise(across(where(is.numeric), ~ round(sum(.x, na.rm = TRUE), 2))) %>% 
-      mutate(`Tipo Vehículo` = "Total")
-    
-    # 5. Unir la fila de Totales al final del data.frame
-    resumen_crosstab <- bind_rows(resumen_crosstab, fila_total)
-    
-    # 6. Renderizar tabla con DT y resaltar totales
-    DT::datatable(
-      resumen_crosstab,
-      rownames = FALSE,
+    datatable(
+      tabla_resumen,
+      extensions = 'Buttons', ## Activa botones
       options = list(
-        pageLength = 15,
+        pageLength = 10,
+        #dom = 't',
         scrollX = TRUE,
-        language = list(
-          url = "//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json"
-        ),
-        dom = "t" # Tabla limpia sin controles redundantes
+        dom = 'Bfrtip',
+        buttons = list(
+          list(
+            extend = 'csv',
+            filename = '01_dist_km_semanal',
+            text = 'Descargar CSV',
+            fieldSeparator = ";"
+          )
+        )
       ),
-      class = "cell-border stripe hover compact"
+      rownames = FALSE
     ) %>% 
-      # Resaltar la fila "Total"
-      DT::formatStyle(
-        'Tipo Vehículo',
-        target = 'row',
-        fontWeight = DT::styleEqual('Total', 'bold'),
-        backgroundColor = DT::styleEqual('Total', '#f0f0f0')
-      ) %>% 
-      # Resaltar la columna "Total"
-      DT::formatStyle(
-        'Total',
-        fontWeight = 'bold',
-        backgroundColor = '#f9f9f9'
-      )
+      formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
   })
-  
+##--------------------------------------------------------------------------##
+## 1. Lógica de pestaña: Escenarios propios
+##--------------------------------------------------------------------------##
+## 2.1. Ló  
 ##--------------------------------------------------------------------------##
 ## 2. Lógica de Pestaña: Mapa de Clústeres
 ##--------------------------------------------------------------------------##
@@ -697,7 +744,7 @@ output$tabla_resumen_km <- renderDT({
   tabla_resumen <- rutasSubDataset() %>%
     sf::st_drop_geometry() %>%
     group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
-    summarise(Total_KM = sum(Dis_ruta_m, na.rm = TRUE)/1000, .groups = "drop") %>%
+    summarise(Total_KM = sum(disRutaSem, na.rm = TRUE)/1000, .groups = "drop") %>%
     pivot_wider(
       names_from  = SR_Tip_Ruta,
       values_from = Total_KM,
@@ -767,7 +814,7 @@ output$CL_tabla_rutas <- renderDT({
     rownames = FALSE
   )
 })
-## 2.3.1.2. Pivot table Cantidad de vehículos
+## 2.3.1.3. Pivot table Cantidad de vehículos
 output$CL_tabla_veh <- renderDT({
   req(rutasSubDataset())
   
@@ -819,6 +866,175 @@ output$CL_tabla_veh <- renderDT({
     ),
     rownames = FALSE
   )
+})
+## 2.3.1.4. Pivot table Cantidad de horas a la semana
+output$CL_tabla_horas <- renderDT({
+  req(rutasSubDataset())
+  print(rutasSubDataset)
+  # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
+  if (nrow(rutasSubDataset()) == 0) {
+    return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
+  }
+  print(rutasSubDataset)
+  tabla_resumen <- rutasSubDataset() %>%
+    sf::st_drop_geometry() %>%
+    group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
+    summarise(TotalHoras = sum(disHorasSem, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(
+      names_from  = SR_Tip_Ruta,
+      values_from = TotalHoras,
+      values_fill = 0
+    ) %>% 
+    rename("Tipo de Vehículo" = SR_Veh_Aj_2)%>% 
+    janitor::adorn_totals(where = c("row", "col"), fill = "-", na.rm = TRUE, name = "Total")
+  
+  datatable(
+    tabla_resumen,
+    extensions = 'Buttons', ## Activa botones
+    options = list(
+      pageLength = 10,
+      #dom = 't',
+      scrollX = TRUE,
+      dom = 'Bfrtip',
+      buttons = list(
+        list(
+          extend = 'csv',
+          filename = '04_Horas_contratadas',
+          text = 'Descargar CSV',
+          fieldSeparator = ";"
+        )
+      )
+    ),
+    rownames = FALSE
+  ) %>% 
+    formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
+})
+## 2.3.2. Reactividad consumo
+## 2.3.2.1. Grafica consumo
+
+CL_demanda_energetica_datos <- reactive({
+  # Requerir el dataset de rutas filtradas
+  req(rutasSubDataset())
+  
+  datos <- rutasSubDataset()
+  
+  # Si es objeto espacial sf, remover geometría para acelerar procesamiento
+  if (inherits(datos, "sf")) {
+    datos <- sf::st_drop_geometry(datos)
+  }
+  
+  if (nrow(datos) == 0) return(NULL)
+  
+  # Determinar el divisor o factor según el radio button
+  factor_calculo <- if (input$demanda_tipo_calculo == "factor") {
+    req(input$demanda_factor_slider)
+    as.numeric(input$demanda_factor_slider)
+  } else {
+    5 # Si es promedio, dividir entre 5
+  }
+  
+  # Evitar división por cero si el slider se sitúa en 0
+  if (is.na(factor_calculo) || factor_calculo == 0) return(NULL)
+  
+  # Filtrar explícitamente por selección de inputs si existen
+  if (!is.null(input$filtro_tipo_veh_clus) && length(input$filtro_tipo_veh_clus) > 0) {
+    datos <- datos %>% filter(SR_Veh_Aj_2 %in% input$filtro_tipo_veh_clus)
+  }
+  
+  if (!is.null(input$filtro_tipo_ruta_clus) && length(input$filtro_tipo_ruta_clus) > 0) {
+    datos <- datos %>% filter(SR_Tip_Ruta %in% input$filtro_tipo_ruta_clus)
+  }
+  
+  if (nrow(datos) == 0) return(NULL)
+  
+  # Agrupar por Tipo de Vehículo y Tipo de Ruta, y aplicar el factor a los km semanales
+  df_agrupado <- datos %>%
+    group_by(
+      TipoVehiculo = SR_Veh_Aj_2,
+      TipoRuta     = SR_Tip_Ruta
+    ) %>%
+    summarise(
+      Km_Semanales = sum(disRutaSem / 1000, na.rm = TRUE),
+      # Cálculo: suma de km / factor
+      Resultado    = sum(disRutaSem / 1000, na.rm = TRUE) / factor_calculo,
+      .groups      = "drop"
+    )
+  print(df_agrupado)
+  return(df_agrupado)
+})
+
+# 2. Renderizar Gráfica Plotly en Barras Apiladas
+output$CL_demanda_energetica <- renderPlotly({
+  df <- CL_demanda_energetica_datos()
+  print(df)
+  
+  # Control cuando no existen registros para los filtros seleccionados
+  if (is.null(df) || nrow(df) == 0) {
+    return(
+      plotly_empty() %>% 
+        layout(
+          title = list(
+            text = "No hay datos disponibles para la combinación de filtros seleccionada",
+            font = list(size = 13, color = "#7f8c8d")
+          )
+        )
+    )
+  }
+  
+  # Etiqueta dinámica para el método aplicado
+  metodo_lbl <- if (input$demanda_tipo_calculo == "factor") {
+    paste0("Factor ajuste (÷ ", input$demanda_factor_slider, ")")
+  } else {
+    "Promedio (÷ 5)"
+  }
+  
+  # Paleta de colores para los tipos de ruta
+  paleta_rutas <- c(
+    "#2c3e50", "#e74c3c", "#3498db", "#2ecc71", 
+    "#f39c12", "#9b59b6", "#1abc9c", "#34495e"
+  )
+  
+  # Construcción del gráfico apilado por tipo de ruta
+  plot_ly(
+    data = df,
+    x = ~TipoVehiculo,
+    y = ~Resultado,
+    split = ~TipoRuta,
+    color = ~TipoRuta,
+    colors = paleta_rutas,
+    type = "bar",
+    hovertemplate = paste(
+      "<b>Vehículo:</b> %{x}<br>",
+      "<b>Tipo de Ruta:</b> %{fullData.name}<br>",
+      "<b>Resultado:</b> %{y:,.2f}<br>",
+      "<b>Km Semanales:</b> %{customdata:,.2f} km<extra></extra>"
+    ),
+    customdata = ~Km_Semanales
+  ) %>%
+    layout(
+      barmode = "stack", # Apila los tipos de ruta dentro de cada vehículo
+      title = list(
+        text = paste0("<b>Demanda Energética por Vehículo y Tipo de Ruta</b><br><sup>Método: ", metodo_lbl, "</sup>"),
+        font = list(size = 14)
+      ),
+      xaxis = list(
+        title = "Tipo de Vehículo",
+        tickangle = -15
+      ),
+      yaxis = list(
+        title = ifelse(input$demanda_tipo_calculo == "factor", "Resultado (Km / Factor)", "Resultado (Km / 5)"),
+        zeroline = TRUE
+      ),
+      legend = list(
+        title = list(text = "<b>Tipo de Ruta</b>"),
+        orientation = "h",
+        x = 0,
+        y = -0.25
+      ),
+      margin = list(t = 60, b = 80, l = 50, r = 20),
+      hoverlabel = list(bgcolor = "white")
+    ) %>%
+    config(displayModeBar = FALSE)
 })
 
 }
