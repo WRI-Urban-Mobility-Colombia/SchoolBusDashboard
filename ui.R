@@ -910,22 +910,22 @@ output$CL_tabla_horas <- renderDT({
     formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
 })
 ## 2.3.2. Reactividad consumo
-## 2.3.2.1. Grafica consumo
+## 2.3.2.1. Datos de consumo
 
 CL_demanda_energetica_datos <- reactive({
-  # Requerir el dataset de rutas filtradas
+  # Requerir el dataset base de rutas subconjunto
   req(rutasSubDataset())
   
   datos <- rutasSubDataset()
   
-  # Si es objeto espacial sf, remover geometría para acelerar procesamiento
+  # Si es objeto espacial (sf), remover la geometría para acelerar cálculos
   if (inherits(datos, "sf")) {
     datos <- sf::st_drop_geometry(datos)
   }
   
   if (nrow(datos) == 0) return(NULL)
   
-  # Determinar el divisor o factor según el radio button
+  # Determinar el factor o divisor según la selección del radio button
   factor_calculo <- if (input$demanda_tipo_calculo == "factor") {
     req(input$demanda_factor_slider)
     as.numeric(input$demanda_factor_slider)
@@ -933,108 +933,83 @@ CL_demanda_energetica_datos <- reactive({
     5 # Si es promedio, dividir entre 5
   }
   
-  # Evitar división por cero si el slider se sitúa en 0
+  # Control de seguridad para evitar división por cero
   if (is.na(factor_calculo) || factor_calculo == 0) return(NULL)
-  
-  # Filtrar explícitamente por selección de inputs si existen
-  if (!is.null(input$filtro_tipo_veh_clus) && length(input$filtro_tipo_veh_clus) > 0) {
-    datos <- datos %>% filter(SR_Veh_Aj_2 %in% input$filtro_tipo_veh_clus)
-  }
-  
-  if (!is.null(input$filtro_tipo_ruta_clus) && length(input$filtro_tipo_ruta_clus) > 0) {
-    datos <- datos %>% filter(SR_Tip_Ruta %in% input$filtro_tipo_ruta_clus)
-  }
   
   if (nrow(datos) == 0) return(NULL)
   
-  # Agrupar por Tipo de Vehículo y Tipo de Ruta, y aplicar el factor a los km semanales
-  df_agrupado <- datos %>%
+  # Agrupar y calcular la métrica dividiendo los kilómetros semanales entre el factor
+  df_resumen <- datos %>%
+    filter(!is.na(SR_Veh_Aj_2), !is.na(SR_Tip_Ruta)) %>%
     group_by(
       TipoVehiculo = SR_Veh_Aj_2,
       TipoRuta     = SR_Tip_Ruta
     ) %>%
     summarise(
-      Km_Semanales = sum(disRutaSem / 1000, na.rm = TRUE),
-      # Cálculo: suma de km / factor
-      Resultado    = sum(disRutaSem / 1000, na.rm = TRUE) / factor_calculo,
-      .groups      = "drop"
+      Valor = sum(disRutaSem / 1000, na.rm = TRUE) / factor_calculo,
+      .groups = "drop"
+    ) %>%
+    # Pivotar la tabla para tener los tipos de ruta como columnas
+    tidyr::pivot_wider(
+      names_from  = TipoVehiculo,
+      values_from = Valor,
+      values_fill = 0
     )
-  print(df_agrupado)
-  return(df_agrupado)
+  
+  return(df_resumen)
 })
 
-# 2. Renderizar Gráfica Plotly en Barras Apiladas
-output$CL_demanda_energetica <- renderPlotly({
+# 2. Renderizado de la Tabla DT
+output$CL_demanda_energetica <- DT::renderDataTable({
   df <- CL_demanda_energetica_datos()
-  print(df)
   
-  # Control cuando no existen registros para los filtros seleccionados
+  # Manejo de dataframe vacío
   if (is.null(df) || nrow(df) == 0) {
     return(
-      plotly_empty() %>% 
-        layout(
-          title = list(
-            text = "No hay datos disponibles para la combinación de filtros seleccionada",
-            font = list(size = 13, color = "#7f8c8d")
-          )
-        )
+      DT::datatable(
+        data.frame(Mensaje = "No hay datos disponibles para la combinación de filtros seleccionada."),
+        rownames = FALSE,
+        options  = list(dom = 't', ordering = FALSE)
+      )
     )
   }
   
-  # Etiqueta dinámica para el método aplicado
-  metodo_lbl <- if (input$demanda_tipo_calculo == "factor") {
-    paste0("Factor ajuste (÷ ", input$demanda_factor_slider, ")")
-  } else {
-    "Promedio (÷ 5)"
-  }
+  # Identificar las columnas numéricas para agregar fila y columna de Total
+  cols_num <- setdiff(names(df), "TipoVehiculo")
   
-  # Paleta de colores para los tipos de ruta
-  paleta_rutas <- c(
-    "#2c3e50", "#e74c3c", "#3498db", "#2ecc71", 
-    "#f39c12", "#9b59b6", "#1abc9c", "#34495e"
-  )
+  df_con_totales <- df %>%
+    # Agregar columna de Total General por fila
+    mutate(Total = rowSums(across(all_of(cols_num)), na.rm = TRUE)) %>%
+    # Agregar fila de Total General al final usando janitor
+    janitor::adorn_totals("row", name = "Total General")
   
-  # Construcción del gráfico apilado por tipo de ruta
-  plot_ly(
-    data = df,
-    x = ~TipoVehiculo,
-    y = ~Resultado,
-    split = ~TipoRuta,
-    color = ~TipoRuta,
-    colors = paleta_rutas,
-    type = "bar",
-    hovertemplate = paste(
-      "<b>Vehículo:</b> %{x}<br>",
-      "<b>Tipo de Ruta:</b> %{fullData.name}<br>",
-      "<b>Resultado:</b> %{y:,.2f}<br>",
-      "<b>Km Semanales:</b> %{customdata:,.2f} km<extra></extra>"
-    ),
-    customdata = ~Km_Semanales
+  # Generar la tabla interactiva DT
+  DT::datatable(
+    df_con_totales,
+    rownames = FALSE,
+    colnames = c("Tipo de Vehículo" = "TipoVehiculo"),
+    options  = list(
+      dom          = 't',        # Muestra únicamente la tabla (sin buscador ni paginación)
+      paging       = FALSE,
+      ordering     = TRUE,
+      scrollX      = TRUE,
+      columnDefs   = list(
+        list(className = 'dt-center', targets = '_all')
+      )
+    )
   ) %>%
-    layout(
-      barmode = "stack", # Apila los tipos de ruta dentro de cada vehículo
-      title = list(
-        text = paste0("<b>Demanda Energética por Vehículo y Tipo de Ruta</b><br><sup>Método: ", metodo_lbl, "</sup>"),
-        font = list(size = 14)
-      ),
-      xaxis = list(
-        title = "Tipo de Vehículo",
-        tickangle = -15
-      ),
-      yaxis = list(
-        title = ifelse(input$demanda_tipo_calculo == "factor", "Resultado (Km / Factor)", "Resultado (Km / 5)"),
-        zeroline = TRUE
-      ),
-      legend = list(
-        title = list(text = "<b>Tipo de Ruta</b>"),
-        orientation = "h",
-        x = 0,
-        y = -0.25
-      ),
-      margin = list(t = 60, b = 80, l = 50, r = 20),
-      hoverlabel = list(bgcolor = "white")
+    # Formatear números a 2 decimales con separador de miles
+    DT::formatRound(
+      columns = c(cols_num, "Total"),
+      digits  = 2
     ) %>%
-    config(displayModeBar = FALSE)
+    # Resaltar la fila de Totales en negrita
+    DT::formatStyle(
+      "TipoVehiculo",
+      target = "row",
+      fontWeight = DT::styleEqual("Total General", "bold"),
+      backgroundColor = DT::styleEqual("Total General", "#f8f9fa")
+    )
 })
 
 }
