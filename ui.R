@@ -61,8 +61,6 @@ rutasv2R1 <- rutasv2R1 %>% mutate(disHorasSem = SR_Toal_H * SR_Tot_Dias)
 
 poligonosV2$NoRutas <- sapply(poligonosV2$id, function(x) sum(rutasv2R1$id_2 == x, na.rm = TRUE))
 
-poligonosV3 <-poligonosV2 %>%filter(NoRutas >0)
-
 ##----------------------------------------------------------------------------##
 ##UI
 ##----------------------------------------------------------------------------##
@@ -319,7 +317,7 @@ ui <- dashboardPage(
         ### Sección de demanda energética
         box(
           width = 12,
-          title = "Demanda energética e infraestructura",
+          title = "Demanda energética e infraestructura de recarga",
           status = 'primary',
           solidHeader = TRUE,
           collapsible = TRUE,
@@ -332,6 +330,8 @@ ui <- dashboardPage(
             selected = "promedio",
             inline   = TRUE
           ),
+          h5("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal"),
+          h5("Factor de utilización: Factor de carga diaria respecto al consumo semanal. 1: 1 carga semanal, 0,2: 5 cargas semanales"),
           conditionalPanel(
             condition = "input.demanda_tipo_calculo == 'factor'",
             column(
@@ -675,7 +675,7 @@ server <- function(input, output, session) {
 ##--------------------------------------------------------------------------##
 ## 2. Lógica de Pestaña: Mapa de Clústeres
 ##--------------------------------------------------------------------------##
-  seleccionados_cluster <- reactiveVal(character(0))
+  #seleccionados_cluster <- reactiveVal(character(0))
   
   output$mapa_clusteres <- renderLeaflet({
     datos <- poligonos_filtrados()
