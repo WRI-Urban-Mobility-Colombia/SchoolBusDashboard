@@ -70,7 +70,8 @@ ui <- dashboardPage(
 
   title = "Visor de rutas escolares",
   
-  ## Header
+## A. HEADER----------------------------------------------------------------##
+
   header = dashboardHeader(
     title = tagList(
       span(class = "logo-lg", "Rutas Escolares"),
@@ -78,8 +79,10 @@ ui <- dashboardPage(
     ),
     rightUi = userOutput("skin_dropdown")
   ),
-  
-  ## Sidebar
+
+##--------------------------------------------------------------------------##  
+## B. SIDEBAR---------------------------------------------------------------##
+
   sidebar = dashboardSidebar(
     width = 240,
     sidebarMenu(
@@ -97,7 +100,10 @@ ui <- dashboardPage(
     id = "Controlbar",
     skinSelector()
   ),
-  ## Body
+
+##--------------------------------------------------------------------------##  
+## c. BODY------------------------------------------------------------------##
+
   body = dashboardBody(
     # CSS enfocado únicamente en eliminar scrolls sobrantes
     tags$head(
@@ -394,28 +400,14 @@ ui <- dashboardPage(
 ##----------------------------------------------------------------------------##
 
 server <- function(input, output, session) {
-  
 ##--------------------------------------------------------------------------##
-## 1. Mapa Interactivo y Selección
+## 1. Introducción ---------------------------------------------------------##
 ##--------------------------------------------------------------------------##
-  seleccionados <- reactiveVal(character(0)) # Almacena IDs de polígonos seleccionados
-  output$mapa_interactivo <- renderLeaflet({
-    leaflet(poligonosV2) %>%
-      addProviderTiles(providers$CartoDB.Positron) %>%
-      addPolygons(
-        layerId     = ~id,
-        fillColor   = "#ffffbf",
-        fillOpacity = 0.5,
-        color       = "#fc8d59",
-        weight      = 1.5,
-        label       = ~paste("Polígono:", id, " | Cluster:", Cluster)
-      ) %>%
-      addLayersControl(
-        overlayGroups = c("Polígonos", "Polígonos Seleccionados", "Rutas Filtradas"),
-        options       = layersControlOptions(collapsed = FALSE)
-      )
-  })
-  
+
+##--------------------------------------------------------------------------##
+## 2. Mapa creación de proyectos
+##--------------------------------------------------------------------------##
+## 2.1. Observer del mapa interactivo (Identificar zonas seleccionadas)-----##
   observeEvent(input$mapa_interactivo_shape_click, {
     click <- input$mapa_interactivo_shape_click
     req(click$id)
@@ -435,13 +427,40 @@ server <- function(input, output, session) {
     seleccionados(nuevo_vector)
     print(nuevo_vector)
   })
+##--------------------------------------------------------------------------##  
+## 2.2. Mapa interactivo base-----------------------------------------------##
+  output$mapa_interactivo <- renderLeaflet({
+    leaflet(poligonosV2) %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
+      addPolygons(
+        layerId     = ~id,
+        fillColor   = "#ffffbf",
+        fillOpacity = 0.5,
+        color       = "#fc8d59",
+        weight      = 1.5,
+        label       = ~paste("Polígono:", id, " | Cluster:", Cluster)
+      ) %>%
+      addLayersControl(
+        overlayGroups = c("Polígonos", "Polígonos Seleccionados", "Rutas Filtradas"),
+        options       = layersControlOptions(collapsed = FALSE)
+      )
+  })
+##--------------------------------------------------------------------------##  
+## 2.3. Vector zonas seleccioandas------------------------------------------##
+
+  seleccionados <- reactiveVal(character(0)) # Almacena IDs de polígonos seleccionados
+
+##--------------------------------------------------------------------------##
+## 2.4.Resaltar polígonos seleccionados-------------------------------------##
   
-  # Resaltar Polígonos Seleccionados
   observe({
     vector_actual <- seleccionados()
+    print(vector_actual)
     
     proxy <- leafletProxy("mapa_interactivo")
     proxy %>% clearGroup("seleccion_roja")
+    
+    # Si hay zonas seleccionadas, agregue polígonos
     
     if (length(vector_actual) > 0) {
       poly_seleccionados <- poligonosV2 %>% filter(id %in% vector_actual)
@@ -459,17 +478,17 @@ server <- function(input, output, session) {
         )
     }
   })
-  
-  ##--------------------------------------------------------------------------##
-  ## 2. Cargar Opciones de Filtros
-  ##--------------------------------------------------------------------------##
+ 
+##--------------------------------------------------------------------------##
+## 2.5. Cargar Opciones de Filtros------------------------------------------##
+
   observe({
     req(rutasv2R1)
     
     opciones_rutas     <- sort(unique(na.omit(rutasv2R1$SR_Tip_Ruta)))
     opciones_vehiculos <- sort(unique(na.omit(rutasv2R1$SR_Veh_Aj_2)))
     
-    updateSelectizeInput(
+    updateSelectizeInput( 
       session, 
       "filtro_tipo_ruta", 
       choices  = opciones_rutas, 
@@ -486,9 +505,9 @@ server <- function(input, output, session) {
     )
   })
   
-  ##--------------------------------------------------------------------------##
-  ## 3. Reactivo de Filtrado Conjunto (Espacial + Controles UI)
-  ##--------------------------------------------------------------------------##
+##--------------------------------------------------------------------------##
+## 2.6.Reactivo de Filtrado Conjunto (Espacial + Controles UI)--------------##
+
   rutas_filtradas_reactivas <- reactive({
     req(rutasv2R1)
     datos <- rutasv2R1
@@ -509,7 +528,7 @@ server <- function(input, output, session) {
       datos <- datos %>% filter(SR_Veh_Aj_2 %in% input$filtro_tipo_vehiculo)
     }
     
-    # 4. LIMPIEZA CRÍTICA: Filtrar geometrías vacías o no válidas que rompen addPolylines
+    # 4. Filtrar geometrías vacías o no válidas que rompen addPolylines
     if (inherits(datos, "sf") && nrow(datos) > 0) {
       datos <- datos %>% 
         filter(!st_is_empty(.)) %>%    # Remueve geometrías vacías
@@ -519,9 +538,9 @@ server <- function(input, output, session) {
     return(datos)
   })
 
-  ##--------------------------------------------------------------------------##
-  ## 3.1 Dibuja y Colorea las Rutas en el Mapa Interactivo Principal
-  ##--------------------------------------------------------------------------##
+##--------------------------------------------------------------------------##
+## 2.7. Dibuja y Colorea las Rutas en el Mapa Interactivo Principal---------##
+
   observe({
     # Validar que los datos y los seleccionados existan
     ids <- seleccionados()
@@ -584,10 +603,9 @@ server <- function(input, output, session) {
       }
     }
   })
-  
-  ##--------------------------------------------------------------------------##
-  ## 4. ValueBox Informativo Superior
-  ##--------------------------------------------------------------------------##
+##--------------------------------------------------------------------------##
+## 2.8. Value box superior--------------------------------------------------##  
+
   output$box_beneficiarios <- renderValueBox({
     rutas_filtradas <- rutas_filtradas_reactivas()
     lista_ids       <- seleccionados()
@@ -623,10 +641,9 @@ server <- function(input, output, session) {
       color    = color_caja
     )
   })
-  
 ##--------------------------------------------------------------------------##
-## 5. Tabla Cruzada (Filas: Tipos de Vehículo | Columnas: Tipos de Ruta)
-##--------------------------------------------------------------------------##
+## 2.9. Pivot table Km-------------------------------------------------##   
+
   output$tabla_resumen_rutas <- renderDT({
     req(rutas_filtradas_reactivas())
     print(rutas_filtradas_reactivas())
@@ -668,14 +685,11 @@ server <- function(input, output, session) {
     ) %>% 
       formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
   })
+
 ##--------------------------------------------------------------------------##
-## 1. Lógica de pestaña: Escenarios propios
+## 3. Lógica de Pestaña: Mapa de Clústeres----------------------------------##
 ##--------------------------------------------------------------------------##
-## 2.1. Ló  
-##--------------------------------------------------------------------------##
-## 2. Lógica de Pestaña: Mapa de Clústeres
-##--------------------------------------------------------------------------##
-  #seleccionados_cluster <- reactiveVal(character(0))
+## 3.1. Render mapa base de zonas-------------------------------------------##
   
   output$mapa_clusteres <- renderLeaflet({
     datos <- poligonos_filtrados()
@@ -697,7 +711,9 @@ server <- function(input, output, session) {
         position = "bottomright"
       )
   })
-## 2.1. Lógica de filtrar zonas
+##--------------------------------------------------------------------------##
+## 3.2. Lógica de filtrar zonas---------------------------------------------##
+
   poligonos_filtrados <- reactive({
     # Si se selecciona "Todos" o no hay nada seleccionado, retorna todo el dataset
     if (is.null(input$filtro_cluster) || "Todos" %in% input$filtro_cluster) {
@@ -706,11 +722,11 @@ server <- function(input, output, session) {
       return(poligonosV2[poligonosV2$Cluster %in% input$filtro_cluster, ])
     }
   })
-
-## 2.2. Filtrar rutas por poligonos
+##--------------------------------------------------------------------------##
+## 3.3. Filtrar rutas por poligonos-----------------------------------------##
 
 rutasSubDataset <- reactive({
-  # Activa reactividad previa 2.1.
+  # Activa reactividad previa 
   req(poligonos_filtrados())
   ids_presentes <- poligonos_filtrados()$id
   ## Filtra en rutas y almacena en rutasSubDataset
@@ -730,8 +746,9 @@ rutasSubDataset <- reactive({
   
   return(datos_filtrados)
 })
-## 2.3.Generación de tablas y gráficas
-## 2.3.1. Km
+##--------------------------------------------------------------------------##
+## 3.3. Tablas de datos por categoría---------------------------------------##
+
 ## 2.3.1.1. Pivot table Km
 output$tabla_resumen_km <- renderDT({
   req(rutasSubDataset())
@@ -911,10 +928,6 @@ output$CL_tabla_horas <- renderDT({
 })
 ## 2.3.2. Reactividad consumo
 ## 2.3.2.1. Datos de consumo
-
-
-
-
 }
 
 
