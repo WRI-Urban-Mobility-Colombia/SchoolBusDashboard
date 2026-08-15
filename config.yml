@@ -1,0 +1,15 @@
+default:
+	# Rutas promedio que puede atender 1 vehículo por tipología	
+	factor_ruta:
+		factor_r_bus: 1.5
+		factor_r_buseta: 2.5
+		factor_r_microbus: 1.5
+		factor_r_van: 1
+		factor_r_camioneta: 2.5
+	# Consumos en kWh/Km
+	factor_consumo:
+		factor_c_bus: 1
+		factor_c_buseta: 1
+		factor_c_microbus: 1
+		factor_c_van: 1
+		factor_c_camioneta: 1
