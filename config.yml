@@ -21,3 +21,6 @@ default:
   modif_km_vacio:
     km_vacio_gral: 7
     km_vacio_perc: 0.26
+    
+  meta_pcbe:
+    beneficiarios: 13147
