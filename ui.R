@@ -19,12 +19,19 @@ library(shinyEffects)
 library(plotly)
 library(DT)
 library(janitor)
+library(config)
 
 ##----------------------------------------------------------------------------##
 ##Abrir archivos necesarios
 ##----------------------------------------------------------------------------##
 ## WD
 setwd(here())
+##----------------------------------------------------------------------------##
+##Carga config file
+##----------------------------------------------------------------------------##
+Sys.setlocale("LC_ALL", "en_US.UTF-8")
+
+CFG <- config::get(file = "config.yml")
 
 # Archivos
 poligonosV2 <- readRDS("Assets/RDS/poligonosV2.rds")
@@ -363,6 +370,7 @@ ui <- dashboardPage(
               step = 0.5
             )
           ),
+          h5("Consumo energetico en Kwh"),
           plotlyOutput("CL_demanda_energetica", height = "350px"),
           DTOutput("CL_demanda_energetica")
         )
@@ -926,7 +934,101 @@ output$CL_tabla_horas <- renderDT({
   ) %>% 
     formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
 })
-## 2.3.2. Reactividad consumo
+## 2.3.2. Reactividad consumo (Dataset)
+CLConsSubDataset <- reactive ({
+  datos <- rutasSubDataset()
+  # Validación de datos requeridos
+  req(datos, nrow(datos) > 0)
+  
+  tabla_Km <- datos%>%
+    # Eliminar geometría si es un objeto sf/spatial
+    sf::st_drop_geometry() %>%
+    group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
+    summarise(
+      Total_disRutaSem = sum(disRutaSem, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    # Pivotear para tener Tipos de Ruta en columnas y Vehículos en filas
+    pivot_wider(
+      names_from = SR_Tip_Ruta,
+      values_from = Total_disRutaSem,
+      values_fill = 0
+    ) %>%
+    rename(`Tipo de Vehículo` = SR_Veh_Aj_2)
+    ## Multiplicar cada fila con el factor de config
+    ### Identificar columnas que corresponden a los tipos de ruta
+    cols_rutas <- setdiff(names(tabla_Km), "Tipo de Vehículo")
+    tabla_demanda <- tabla_Km %>%
+      rowwise() %>%
+      mutate(
+        # Normalizar el nombre del vehículo a minúsculas y sin espacios para coincidir con las claves de config
+        # Ejemplo: "Bus Padron" -> "bus_padron" o "Bus" -> "bus"
+        clave_vehiculo = tolower(gsub("[ -]", "_", `Tipo de Vehículo`)),
+        
+        # Obtener el factor del config. Si no existe la clave para algún vehículo, usa 1 por defecto
+        factor_veh = dplyr::coalesce(CFG$factor_consumo[[clave_vehiculo]], 1.0)
+      ) %>%
+      # Multiplicar los valores de los kilómetros por el factor de consumo
+      mutate(across(all_of(cols_rutas), ~ .x * factor_veh)) %>%
+      ungroup() %>%
+      # Eliminar las columnas auxiliares
+      select(-clave_vehiculo, -factor_veh)
+    
+    return(tabla_demanda)
+})
+### 2.3.3. Render tabla
+
+output$CL_demanda_energetica <- renderDT({
+  # 1. Validar requerimiento de datos reactivos
+  df_demanda <- req(CLConsSubDataset())
+  
+  # 2. Manejo de dataset vacío
+  if (nrow(df_demanda) == 0) {
+    return(
+      datatable(
+        data.frame("Estado" = "No hay datos para la combinación de filtros seleccionada."),
+        rownames = FALSE,
+        options = list(
+          dom = 't',
+          ordering = FALSE
+        )
+      )
+    )
+  }
+  
+  # 3. Renderizado con DT::datatable siguiendo el estilo del segundo código
+  datatable(
+    df_demanda,
+    extensions = 'Buttons',
+    rownames   = FALSE,
+    class      = 'cell-border stripe hover compact',
+    options    = list(
+      pageLength = 10,
+      scrollX    = TRUE,
+      dom        = 'Bfrtip',
+      language   = list(
+        url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json'
+      ),
+      buttons    = list(
+        list(
+          extend         = 'csv',
+          filename       = paste0('02_demanda_energetica_', Sys.Date()),
+          text           = 'Descargar CSV',
+          fieldSeparator = ';',
+          bom            = TRUE
+        )
+      )
+    )
+  ) %>%
+    formatCurrency(
+      columns  = setdiff(names(df_demanda), "Tipo de Vehículo"),
+      currency = "",
+      interval = 3,
+      mark     = ".",
+      #dec.mark = ",",
+      digits   = 0
+    )
+})
 ## 2.3.2.1. Datos de consumo
 }
 
