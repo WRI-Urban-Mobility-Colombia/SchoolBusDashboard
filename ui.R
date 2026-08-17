@@ -440,7 +440,8 @@ server <- function(input, output, session) {
 ##--------------------------------------------------------------------------##
 ## 2. Mapa creación de proyectos
 ##--------------------------------------------------------------------------##
-## 2.1. Observer del mapa interactivo (Identificar zonas seleccionadas)-----##
+
+  ## 2.1. Observer del mapa interactivo (Identificar zonas seleccionadas)-----##
   observeEvent(input$mapa_interactivo_shape_click, {
     click <- input$mapa_interactivo_shape_click
     req(click$id)
@@ -575,7 +576,7 @@ server <- function(input, output, session) {
 ## 2.7. Dibuja y Colorea las Rutas en el Mapa Interactivo Principal---------##
 
   observe({
-    # Validar que los datos y los seleccionados existan
+    # 1. Validar selección
     ids <- seleccionados()
     if (length(ids) == 0) {
       leafletProxy("mapa_interactivo") %>% 
@@ -587,11 +588,12 @@ server <- function(input, output, session) {
     rutas_sub <- rutas_filtradas_reactivas()
     proxy     <- leafletProxy("mapa_interactivo")
     
+    # Limpieza previa del grupo y la leyenda
     proxy %>% 
       clearGroup("Rutas Filtradas") %>% 
       clearControls()
     
-    # Asegurar que hay filas válidas para graficar
+    # 2. Validar que existan datos válidos
     if (!is.null(rutas_sub) && nrow(rutas_sub) > 0) {
       
       # Determinar variable de color de forma segura
@@ -603,32 +605,44 @@ server <- function(input, output, session) {
       # Validar si la columna existe en el dataset
       if (var_color %in% names(rutas_sub)) {
         
-        # Omitir valores NA de la paleta
-        valores_unicos <- sort(unique(na.omit(rutas_sub[[var_color]])))
+        # Extraer la columna de valores
+        vec_color <- rutas_sub[[var_color]]
+        
+        # Omitir valores NA de los únicos para el dominio
+        valores_unicos <- sort(unique(na.omit(vec_color)))
         
         if (length(valores_unicos) > 0) {
-          paleta <- colorFactor(palette = "Set1", domain = valores_unicos)
+          # Crear la paleta asignando un dominio completo (incluyendo NAs implícitamente)
+          paleta <- colorFactor(palette = "Set1", domain = vec_color, na.color = "#808080")
           
           titulo_leyenda <- if (identical(var_color, "SR_Tip_Ruta")) "Tipo de Ruta" else "Tipo de Vehículo"
           
+          # Calcular la distancia formateada de forma segura contra NAs
+          dist_km <- ifelse(
+            is.na(rutas_sub$disRutaSem), 
+            "N/A", 
+            paste0(round(rutas_sub$disRutaSem / 1000, 2), " Km")
+          )
+          
+          # 3. Dibujar en el mapa
           proxy %>%
             addPolylines(
               data        = rutas_sub,
               group       = "Rutas Filtradas",
-              color       = ~paleta(get(var_color)),
+              color       = paleta(vec_color), # Se pasa el vector directamente evaluado por la función paleta
               weight      = 3.5,
               opacity     = 0.85,
               popup       = ~paste0(
                 "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
                 "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
                 "<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
-                "<b>Distancia: </b>", round(disRutaSem/ 1000, 2), " Km"
+                "<b>Distancia: </b>", dist_km
               )
             ) %>%
             addLegend(
               position = "bottomright",
               pal      = paleta,
-              values   = rutas_sub[[var_color]],
+              values   = vec_color,
               title    = titulo_leyenda,
               opacity  = 0.9
             )
