@@ -325,6 +325,28 @@ ui <- dashboardPage(
             collapsed = TRUE,
             h5("Total de horas en una semana"),
             DTOutput("CL_tabla_horas")
+          ),
+          box(
+            width = 12,
+            title = "Cumplimiento de la meta del PCBE",
+            status = "primary",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            collapsed = TRUE,
+            fluidRow(
+              column(
+                width = 12,
+                h5("Beneficiarios atendidos"),
+                valueBoxOutput("ben_atendidos", width = 6)  
+              ),
+              column(
+                width = 12,
+                h5("Meta de la política pública"),
+                valueBoxOutput("metaPCBE", width = 6)  
+              )
+            ),
+            h5("Porcentaje"),
+            plotlyOutput("plotly_gauge", height = "250px")
           )
         ),
         ### Sección de demanda energética
@@ -373,7 +395,7 @@ ui <- dashboardPage(
             )
           ),
           hr(),
-          h5("Consumo energetico en Kwh"),
+          h5("Consumo energetico semanal en Kwh"),
           plotlyOutput("CL_demanda_energetica_plot", height = "350px"),
           DTOutput("CL_demanda_energetica")
         )
@@ -937,6 +959,73 @@ output$CL_tabla_horas <- renderDT({
   ) %>% 
     formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
 })
+## 2.3.1.1. Calculo beneficiarios
+
+beneficiarios_atendidos <- reactive({
+  req(rutasSubDataset()) # Asegura que los datos existan antes de sumar
+  data <- rutasSubDataset()
+  sum(data$SR_TotalEst, na.rm = TRUE)
+})
+
+## 2.3.1.2. value box beneficiarios y pcbe
+
+output$ben_atendidos <- renderValueBox({
+  total_atendidos <- beneficiarios_atendidos()
+  
+  valueBox(
+    value = format(total_atendidos, big.mark = "."), # Formato con separador de miles
+    subtitle = "Beneficiarios Atendidos",
+    icon = icon("users"),
+    color = "blue"
+  )
+})
+output$metaPCBE <- renderValueBox({
+  meta_val <- CFG$meta_pcbe$beneficiarios
+  
+  valueBox(
+    value = format(meta_val, big.mark = "."),
+    subtitle = "Meta de Beneficiarios",
+    icon = icon("bullseye"),
+    color = "purple"
+  )
+})
+
+## 2.3.1.3. Velocimetro
+
+output$plotly_gauge <- renderPlotly({
+  data <- rutasSubDataset()
+  meta <- CFG$meta_pcbe$beneficiarios
+  beneficiarios <- sum(data$SR_TotalEst, na.rm = TRUE)
+  cumplimiento <- beneficiarios/meta*100
+  
+  fig <- plot_ly(
+    type = "indicator",
+    mode = "gauge+number",
+    value = cumplimiento,
+    number = list(suffix = "%"),
+    title = list(text = "Nivel de Avance", font = list(size = 16)),
+    gauge = list(
+      axis = list(range = list(0, 100), tickwidth = 1, tickcolor = "gray"),
+      bar = list(color = "#2b2b2b"),
+      bgcolor = "white",
+      borderwidth = 1,
+      bordercolor = "gray",
+      steps = list(
+        list(range = c(0, 30), color = "#f8d7da"),   # Crítico (rojo claro)
+        list(range = c(30, 65), color = "#fff3cd"),  # Advertencia (amarillo claro)
+        list(range = c(65, 100), color = "#d1e7dd")  # Meta (verde claro)
+      )
+    )
+  ) %>%
+    layout(
+      margin = list(l = 20, r = 20, t = 40, b = 20),
+      font = list(family = "Arial")
+    )
+  
+  fig
+})
+
+
 ## 2.3.2. Reactividad consumo (Dataset)
 CLConsSubDataset <- reactive ({
   datos <- rutasSubDataset()
@@ -950,7 +1039,7 @@ CLConsSubDataset <- reactive ({
     sf::st_drop_geometry() %>%
     group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
     summarise(
-      Total_disRutaSem = sum(disRutaSem, na.rm = TRUE),
+      Total_disRutaSem = sum(disRutaSem/1000, na.rm = TRUE),
       .groups = "drop"
     ) %>%
     # Pivotear para tener Tipos de Ruta en columnas y Vehículos en filas
@@ -963,6 +1052,8 @@ CLConsSubDataset <- reactive ({
     ## Multiplicar cada fila con el factor de config
     ### Identificar columnas que corresponden a los tipos de ruta
     cols_rutas <- setdiff(names(tabla_Km), "Tipo de Vehículo")
+    print(tabla_Km)
+    print(tabla_Km)
     tabla_demanda <- tabla_Km %>%
       rowwise() %>%
       mutate(
@@ -982,7 +1073,6 @@ CLConsSubDataset <- reactive ({
     return(tabla_demanda)
 })
 ### 2.3.3. Render tabla
-
 
 output$CL_demanda_energetica <- renderDT({
   # 1. Validar datos reactivos
@@ -1012,7 +1102,7 @@ output$CL_demanda_energetica <- renderDT({
     ) %>%
     dplyr::rename("Consumo total (kWh)" = Total)
   
-  # 4. Renderizado DT con ancho uniforme de columnas
+  # 4. Renderizado DT con alineación centrada uniforme
   datatable(
     tabla_con_totales,
     extensions = 'Buttons',
@@ -1021,10 +1111,21 @@ output$CL_demanda_energetica <- renderDT({
     options    = list(
       pageLength = 10,
       scrollX    = TRUE,
-      autoWidth  = TRUE,
+      autoWidth  = FALSE, # Se recomienda FALSE al usar widths fijos explícitos
       dom        = 'Bfrtip',
       columnDefs = list(
-        list(width = '140px', targets = '_all') # Asigna un ancho uniforme a todas las columnas
+        list(
+          width = '140px', 
+          className = 'dt-center', # Alinea encabezados y celdas al centro
+          targets = '_all'
+        )
+      ),
+      # Forzar ajuste de columnas al inicializar la tabla (corrige desalineaciones por scrollX)
+      initComplete = JS(
+        "function(settings, json) {",
+        "  $(this.api().table().header()).css({'text-align': 'center'});",
+        "  this.api().columns.adjust();",
+        "}"
       ),
       language   = list(
         url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json'
@@ -1039,15 +1140,14 @@ output$CL_demanda_energetica <- renderDT({
         )
       )
     )
-  ) %>%
-    formatCurrency(
-      columns  = setdiff(names(tabla_con_totales), "Tipo de Vehículo"),
-      currency = "",
-      interval = 3,
-      mark     = ".",
-      dec.mark = ",",
-      digits   = 0
-    )
+  ) %>% formatCurrency(
+    columns  = setdiff(names(tabla_con_totales), "Tipo de Vehículo"),
+    currency = "",
+    interval = 3,
+    mark     = ".",
+    dec.mark = ",",
+    digits   = 0
+  )
 })
 
 ##2.3.4. Render gráfica consumos
@@ -1055,6 +1155,7 @@ output$CL_demanda_energetica <- renderDT({
 output$CL_demanda_energetica_plot <- renderPlotly({
   # 1. Validar datos reactivos
   df_demanda <- req(CLConsSubDataset())
+  print(df_demanda)
   
   # 2. Manejo de dataset vacío
   if (nrow(df_demanda) == 0) {
