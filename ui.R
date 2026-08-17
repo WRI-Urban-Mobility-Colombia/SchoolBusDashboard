@@ -343,35 +343,38 @@ ui <- dashboardPage(
             selected = "promedio",
             inline   = TRUE
           ),
-          h5("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal"),
-          h5("Factor de utilización: Factor de carga diaria respecto al consumo semanal. 1: 1 carga semanal, 0,2: 5 cargas semanales"),
-          conditionalPanel(
-            condition = "input.demanda_tipo_calculo == 'factor'",
-            column(
-              width = 4,
-              sliderInput(
-                inputId = "demanda_factor_slider",
-                label   = "Factor de ajuste/eficiencia: 1: Carga total semanal en 1 día a la semana, 0,2 carga promedio diaria (5 días a la semana)",
-                min     = 0.2,
-                max     = 1.0,
-                value   = 0.6,
-                step    = 0.2
+          h5(em("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal")),
+          h5(em("Factor de utilización: Factor de carga diaria respecto al consumo semanal. 1: 1 carga semanal, 0,2: 5 cargas semanales")),
+          fluidRow(
+            conditionalPanel(
+              condition = "input.demanda_tipo_calculo == 'factor'",
+              column(
+                width = 4,
+                sliderInput(
+                  inputId = "demanda_factor_slider",
+                  label   = "Factor de ajuste/eficiencia: 1: Carga total semanal en 1 día a la semana, 0,2 carga promedio diaria (5 días a la semana)",
+                  min     = 0.2,
+                  max     = 1.0,
+                  value   = 0.6,
+                  step    = 0.2
+                )
+              ),
+              column(
+                width = 4,
+                sliderInput(
+                  inputId = "horas_vent_carga",
+                  label = "Elija las horas de la ventana de carga, suele ser similar a la duración de la jornada educativa",
+                  min = 2,
+                  max = 6,
+                  value = 3,
+                  step = 0.5
+                )
               )
             )
           ),
-          column(
-            width = 4,
-            sliderInput(
-              inputId = "horas_vent_carga",
-              label = "Elija las horas de la ventana de carga, suele ser similar a la duración de la jornada educativa",
-              min = 2,
-              max = 6,
-              value = 3,
-              step = 0.5
-            )
-          ),
+          hr(),
           h5("Consumo energetico en Kwh"),
-          plotlyOutput("CL_demanda_energetica", height = "350px"),
+          plotlyOutput("CL_demanda_energetica_plot", height = "350px"),
           DTOutput("CL_demanda_energetica")
         )
       ),
@@ -937,6 +940,8 @@ output$CL_tabla_horas <- renderDT({
 ## 2.3.2. Reactividad consumo (Dataset)
 CLConsSubDataset <- reactive ({
   datos <- rutasSubDataset()
+  # Factor perdidas 
+  factor_perdidas <- 1 + dplyr::coalesce(CFG$modif_consumo$perdidas, 0)
   # Validación de datos requeridos
   req(datos, nrow(datos) > 0)
   
@@ -969,7 +974,7 @@ CLConsSubDataset <- reactive ({
         factor_veh = dplyr::coalesce(CFG$factor_consumo[[clave_vehiculo]], 1.0)
       ) %>%
       # Multiplicar los valores de los kilómetros por el factor de consumo
-      mutate(across(all_of(cols_rutas), ~ .x * factor_veh)) %>%
+      mutate(across(all_of(cols_rutas), ~ .x * factor_veh * (factor_perdidas))) %>%
       ungroup() %>%
       # Eliminar las columnas auxiliares
       select(-clave_vehiculo, -factor_veh)
@@ -978,8 +983,9 @@ CLConsSubDataset <- reactive ({
 })
 ### 2.3.3. Render tabla
 
+
 output$CL_demanda_energetica <- renderDT({
-  # 1. Validar requerimiento de datos reactivos
+  # 1. Validar datos reactivos
   df_demanda <- req(CLConsSubDataset())
   
   # 2. Manejo de dataset vacío
@@ -996,16 +1002,30 @@ output$CL_demanda_energetica <- renderDT({
     )
   }
   
-  # 3. Renderizado con DT::datatable siguiendo el estilo del segundo código
+  # 3. Calcular totales y renombrar columna de total general
+  tabla_con_totales <- df_demanda %>%
+    janitor::adorn_totals(
+      where = c("row", "col"), 
+      fill  = "-", 
+      na.rm = TRUE, 
+      name  = "Total"
+    ) %>%
+    dplyr::rename("Consumo total (kWh)" = Total)
+  
+  # 4. Renderizado DT con ancho uniforme de columnas
   datatable(
-    df_demanda,
+    tabla_con_totales,
     extensions = 'Buttons',
     rownames   = FALSE,
     class      = 'cell-border stripe hover compact',
     options    = list(
       pageLength = 10,
       scrollX    = TRUE,
+      autoWidth  = TRUE,
       dom        = 'Bfrtip',
+      columnDefs = list(
+        list(width = '140px', targets = '_all') # Asigna un ancho uniforme a todas las columnas
+      ),
       language   = list(
         url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json'
       ),
@@ -1021,12 +1041,86 @@ output$CL_demanda_energetica <- renderDT({
     )
   ) %>%
     formatCurrency(
-      columns  = setdiff(names(df_demanda), "Tipo de Vehículo"),
+      columns  = setdiff(names(tabla_con_totales), "Tipo de Vehículo"),
       currency = "",
       interval = 3,
       mark     = ".",
-      #dec.mark = ",",
+      dec.mark = ",",
       digits   = 0
+    )
+})
+
+##2.3.4. Render gráfica consumos
+
+output$CL_demanda_energetica_plot <- renderPlotly({
+  # 1. Validar datos reactivos
+  df_demanda <- req(CLConsSubDataset())
+  
+  # 2. Manejo de dataset vacío
+  if (nrow(df_demanda) == 0) {
+    return(
+      plotly_empty(type = "scatter", mode = "text") %>%
+        layout(
+          title = list(
+            text = "No hay datos para la combinación de filtros seleccionada.",
+            font = list(size = 14, color = "gray")
+          )
+        )
+    )
+  }
+  
+  # 3. Transformar tabla de formato ancho a largo para Plotly
+  df_long <- df_demanda %>%
+    tidyr::pivot_longer(
+      cols      = setdiff(names(df_demanda), "Tipo de Vehículo"),
+      names_to  = "Tipo_Ruta",
+      values_to = "Consumo_kWh"
+    ) %>%
+    dplyr::filter(Consumo_kWh > 0) %>% # Opcional: ignorar valores en 0
+    dplyr::mutate(
+      Consumo_fmt = format(round(Consumo_kWh), big.mark = ".", decimal.mark = ",")
+    )
+  
+  # 4. Construir gráfico de barras apiladas
+  plot_ly(
+    data      = df_long,
+    x         = ~`Tipo de Vehículo`,
+    y         = ~Consumo_kWh,
+    color     = ~Tipo_Ruta,
+    type      = "bar",
+    text      = ~paste0(
+      "<b>Vehículo:</b> ", `Tipo de Vehículo`, "<br>",
+      "<b>Tipo de Ruta:</b> ", Tipo_Ruta, "<br>",
+      "<b>Consumo:</b> ", Consumo_fmt, " kWh"
+    ),
+    hoverinfo = "text"
+  ) %>%
+    layout(
+      barmode = "stack",
+      xaxis = list(
+        title = "",
+        tickangle = 0
+      ),
+      yaxis = list(
+        title = "Consumo (kWh)",
+        zeroline = TRUE
+      ),
+      legend = list(
+        orientation = "h",
+        x = 0,
+        y = 1.15,
+        title = list(text = "")
+      ),
+      margin = list(l = 50, r = 20, t = 40, b = 40),
+      hoverlabel = list(bgcolor = "white")
+    ) %>%
+    config(
+      displayModeBar = TRUE,
+      displaylogo    = FALSE,
+      modeBarButtonsToRemove = list(
+        "zoom2d", "pan2d", "select2d", "lasso2d", 
+        "zoomIn2d", "zoomOut2d", "autoScale2d"
+      )
     )
 })
 ## 2.3.2.1. Datos de consumo
