@@ -380,7 +380,6 @@ ui <- dashboardPage(
                 condition = 'input.EscenarioKm == "extras"',
                 numericInput(
                   inputId = "Kms_ad",
-                  width = 12,
                   label = "Ingrese la distancia operada adicional por otros servicios (Km semanales)",
                   value = 140,
                   min = 0,
@@ -393,7 +392,7 @@ ui <- dashboardPage(
           hr(),
           h5(em("Consumo estimado si se implementan el 100% de las rutas de la zona, en las tipologías vehiculares y tipo de rutas seleccionados")),
           hr(),
-          plotlyOutput("CL_demanda_energetica_plot", height = "350px"),
+          plotlyOutput("CL_demanda_energetica_plot", height = "450px"),
           h4(em("Tabla de datos de consumo en kWh")),
           DTOutput("CL_demanda_energetica"),
           hr(),
@@ -405,14 +404,15 @@ ui <- dashboardPage(
           radioButtons(
             inputId  = "demanda_tipo_calculo",
             label    = "Método de estimación:",
-            choices  = c("Promedio" = "promedio", "Factor de utilización diaria" = "factor"),
+            choices  = c("Promedio" = "promedio", "Carga semanal" = "factor"),
             selected = "promedio",
             inline   = TRUE
           ),
           conditionalPanel(
             condition = "input.demanda_tipo_calculo == 'factor'",
-            column(
               width = 5,
+              div(
+                style = "max-width: 350px;",
                 sliderInput(
                   inputId = "demanda_factor_slider",
                   label   = "Elija el número de días en los que se repartirá la recarga semanal",
@@ -420,9 +420,22 @@ ui <- dashboardPage(
                   max     = 7,
                   value   = 3,
                   step    = 1
+                )
               )
+          ),
+          h5(em("Seleccione las horas disponibles de la ventana de recarga")),
+          div(
+            style = "max-width: 350px;",
+            sliderInput(
+              inputId = "VentanaCarga",
+              label = "Horas de la ventana de recarga",
+              min = 1.5,
+              max = 12,
+              value = 3,
+              step = 0.5
             )
           ),
+
           
           
           h6(em("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal")),
@@ -968,6 +981,44 @@ output$CL_tabla_veh <- renderDT({
     rownames = FALSE
   )
 })
+## 2.3.1.3. Pivot table Cantidad de vehículos (Solo datos)
+CL_tabla_veh_data <- reactive({
+  # 1. Validar requerimiento de datos
+  datos <- req(rutasSubDataset())
+  
+  # Si el dataset resultante no tiene filas, retorna data frame vacío de forma limpia
+  if (nrow(datos) == 0) {
+    return(data.frame())
+  }
+  
+  # 2. Procesar y estructurar el data frame
+  tabla_resumen <- datos %>%
+    sf::st_drop_geometry() %>%
+    group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
+    summarise(Cantidad = n(), .groups = "drop") %>%
+    pivot_wider(
+      names_from  = SR_Tip_Ruta,
+      values_from = Cantidad,
+      values_fill = 0
+    ) %>% 
+    rename("Tipo de Vehículo" = SR_Veh_Aj_2) %>% 
+    # Asignar factor por vehículo, dividir y redondear al entero superior
+    mutate(
+      factor = case_when(
+        toupper(`Tipo de Vehículo`) == "BUS"                      ~ 1.5,
+        toupper(`Tipo de Vehículo`) == "BUSETA"                   ~ 2.5,
+        toupper(`Tipo de Vehículo`) %in% c("MICROBÚS", "MICROBUS") ~ 1.5,
+        toupper(`Tipo de Vehículo`) == "VAN"                      ~ 1.0,
+        toupper(`Tipo de Vehículo`) == "CAMIONETA"                ~ 2.5,
+        TRUE ~ 1.0
+      ),
+      across(where(is.numeric) & !c(factor), ~ ceiling(.x / factor))
+    ) %>% 
+    select(-factor) %>% 
+    janitor::adorn_totals(where = c("row", "col"), fill = "-", na.rm = TRUE, name = "Total")
+  
+  return(tabla_resumen)
+})
 ## 2.3.1.4. Pivot table Cantidad de horas a la semana
 output$CL_tabla_horas <- renderDT({
   req(rutasSubDataset())
@@ -1078,14 +1129,19 @@ output$plotly_gauge <- renderPlotly({
 
 
 ## 2.3.2. Reactividad consumo (Dataset)
-CLConsSubDataset <- reactive ({
+CLConsSubDataset <- reactive({
   datos <- rutasSubDataset()
-  # Factor perdidas 
+  print("rutasSubDataset")
+  print(datos)
+  
+  # Factor pérdidas 
   factor_perdidas <- 1 + dplyr::coalesce(CFG$modif_consumo$perdidas, 0)
+  factor_kmvac <- 1 + dplyr::coalesce(CFG$modif_km_vacio$km_vacio_perc, 0)
+  
   # Validación de datos requeridos
   req(datos, nrow(datos) > 0)
   
-  tabla_Km <- datos%>%
+  tabla_Km <- datos %>%
     # Eliminar geometría si es un objeto sf/spatial
     sf::st_drop_geometry() %>%
     group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
@@ -1099,36 +1155,48 @@ CLConsSubDataset <- reactive ({
       values_from = Total_disRutaSem,
       values_fill = 0
     ) %>%
-    rename(`Tipo de Vehículo` = SR_Veh_Aj_2)
-    ## Multiplicar cada fila con el factor de config
-    ### Identificar columnas que corresponden a los tipos de ruta
-    cols_rutas <- setdiff(names(tabla_Km), "Tipo de Vehículo")
-    print(tabla_Km)
-    print(tabla_Km)
-    tabla_demanda <- tabla_Km %>%
-      rowwise() %>%
-      mutate(
-        # Normalizar el nombre del vehículo a minúsculas y sin espacios para coincidir con las claves de config
-        # Ejemplo: "Bus Padron" -> "bus_padron" o "Bus" -> "bus"
-        clave_vehiculo = tolower(gsub("[ -]", "_", `Tipo de Vehículo`)),
-        
-        # Obtener el factor del config. Si no existe la clave para algún vehículo, usa 1 por defecto
-        factor_veh = dplyr::coalesce(CFG$factor_consumo[[clave_vehiculo]], 1.0)
-      ) %>%
-      # Multiplicar los valores de los kilómetros por el factor de consumo
-      mutate(across(all_of(cols_rutas), ~ .x * factor_veh * (factor_perdidas))) %>%
-      ungroup() %>%
-      # Eliminar las columnas auxiliares
-      select(-clave_vehiculo, -factor_veh)
-    
-    return(tabla_demanda)
+    rename(`Tipo de Vehículo` = SR_Veh_Aj_2) %>%
+    mutate(across(where(is.numeric), ~ .x * factor_kmvac))
+  
+  ## Multiplicar cada fila con el factor de config
+  ### Identificar columnas que corresponden a los tipos de ruta
+  cols_rutas <- setdiff(names(tabla_Km), "Tipo de Vehículo")
+  
+  # BLOQUE CONDICIONAL SOLICITADO
+  if (isTruthy(input$EscenarioKm) && input$EscenarioKm == "extras") {
+    req(input$Kms_ad, CL_tabla_veh_data())
+    ## Multiplicar los km otros servicios
+    tabla_adicional <- CL_tabla_veh_data() %>%
+      mutate(across(where(is.numeric), ~ .x * input$Kms_ad))
+    tabla_Km <- tabla_Km %>%
+      left_join(tabla_adicional, by = "Tipo de Vehículo", suffix = c("", "_extra")) %>%
+      mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
+  }
+  tabla_demanda <- tabla_Km %>%
+    rowwise() %>%
+    mutate(
+      # Normalizar el nombre del vehículo a minúsculas y sin espacios para coincidir con las claves de config
+      clave_vehiculo = tolower(gsub("[ -]", "_", `Tipo de Vehículo`)),
+      
+      # Obtener el factor del config. Si no existe la clave para algún vehículo, usa 1 por defecto
+      factor_veh = dplyr::coalesce(CFG$factor_consumo[[clave_vehiculo]], 1.0)
+    ) %>%
+    # Multiplicar los valores de los kilómetros por el factor de consumo
+    mutate(across(all_of(cols_rutas), ~ .x * factor_veh * (factor_perdidas))) %>%
+    ungroup() %>%
+    # Eliminar las columnas auxiliares
+    select(-clave_vehiculo, -factor_veh)
+
+  return(tabla_demanda)
 })
 ### 2.3.3. Render tabla
 
 output$CL_demanda_energetica <- renderDT({
   # 1. Validar datos reactivos
   df_demanda <- req(CLConsSubDataset())
-  
+  # eliminar total para evitar doble consumo
+  df_demanda <- df_demanda %>%
+    select(-any_of(c("Total")))
   # 2. Manejo de dataset vacío
   if (nrow(df_demanda) == 0) {
     return(
@@ -1152,7 +1220,7 @@ output$CL_demanda_energetica <- renderDT({
       name  = "Total"
     ) %>%
     dplyr::rename("Consumo total (kWh)" = Total)
-  
+
   # 4. Renderizado DT con alineación centrada uniforme
   datatable(
     tabla_con_totales,
