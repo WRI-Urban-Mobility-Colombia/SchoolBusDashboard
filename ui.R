@@ -20,6 +20,7 @@ library(plotly)
 library(DT)
 library(janitor)
 library(config)
+library(lubridate)
 
 ##----------------------------------------------------------------------------##
 ##Abrir archivos necesarios
@@ -237,13 +238,13 @@ ui <- dashboardPage(
       ## Pestaña 3: Explore sus zonas
       tabItem(
         tabName = "tab_mapa2",
-        fluidRow(
-          column(width = 4, valueBoxOutput("box_beneficiarios1", width = 12)),
-          column(width = 4, valueBoxOutput("box_beneficiarios2", width = 12)),
-          column(width = 4, valueBoxOutput("box_beneficiarios3", width = 12))
-        ),
+        #fluidRow(
+        #  column(width = 4, valueBoxOutput("box_beneficiarios1", width = 12)),
+        #  column(width = 4, valueBoxOutput("box_beneficiarios2", width = 12)),
+        #  column(width = 4, valueBoxOutput("box_beneficiarios3", width = 12))
+        #),
         column(
-          width = 7,
+          width = 5,
           box(
             title = "Mapa de exploracion de clústeres",
             status = "primary",
@@ -254,7 +255,7 @@ ui <- dashboardPage(
           )
         ),
         column(
-          width = 5,
+          width = 7,
           # caja de controles del mapa
           box(
             width = 12,
@@ -335,14 +336,14 @@ ui <- dashboardPage(
             collapsed = TRUE,
             fluidRow(
               column(
-                width = 12,
-                h5("Beneficiarios atendidos"),
-                valueBoxOutput("ben_atendidos", width = 6)  
+                width = 6,
+                h4("Beneficiarios atendidos"),
+                valueBoxOutput("ben_atendidos", width = 12)  
               ),
               column(
-                width = 12,
-                h5("Meta de la política pública"),
-                valueBoxOutput("metaPCBE", width = 6)  
+                width = 6,
+                h4("Meta de la política pública"),
+                valueBoxOutput("metaPCBE", width = 12)  
               )
             ),
             h5("Porcentaje"),
@@ -357,47 +358,83 @@ ui <- dashboardPage(
           solidHeader = TRUE,
           collapsible = TRUE,
           collapsed = TRUE,
-          h5("Demanda energética semanal"),
-          radioButtons(
-            inputId  = "demanda_tipo_calculo",
-            label    = "Método de cálculo:",
-            choices  = c("Promedio" = "promedio", "Factor de utilización diaria" = "factor"),
-            selected = "promedio",
-            inline   = TRUE
-          ),
-          h5(em("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal")),
-          h5(em("Factor de utilización: Factor de carga diaria respecto al consumo semanal. 1: 1 carga semanal, 0,2: 5 cargas semanales")),
+          h3(em("Demanda de energía semanal")),
+          hr(),
+          h4("Defina el escenario que quiere analizar"),
           fluidRow(
-            conditionalPanel(
-              condition = "input.demanda_tipo_calculo == 'factor'",
-              column(
-                width = 4,
-                sliderInput(
-                  inputId = "demanda_factor_slider",
-                  label   = "Factor de ajuste/eficiencia: 1: Carga total semanal en 1 día a la semana, 0,2 carga promedio diaria (5 días a la semana)",
-                  min     = 0.2,
-                  max     = 1.0,
-                  value   = 0.6,
-                  step    = 0.2
-                )
-              ),
-              column(
-                width = 4,
-                sliderInput(
-                  inputId = "horas_vent_carga",
-                  label = "Elija las horas de la ventana de carga, suele ser similar a la duración de la jornada educativa",
-                  min = 2,
-                  max = 6,
-                  value = 3,
-                  step = 0.5
+            column(
+              width =4,
+              radioButtons(
+                inputId = "EscenarioKm",
+                label = "Seleccione el escenario:",
+                choices = c(
+                  "Operación más 26% de recorridos en vacío" = "base",
+                  "Operación más 26% de vacío y servicios adicionales" = "extras"
+                ),
+                selected = "base"
+              )
+            ),
+            column(
+              width = 4,
+              conditionalPanel(
+                condition = 'input.EscenarioKm == "extras"',
+                numericInput(
+                  inputId = "Kms_ad",
+                  width = 12,
+                  label = "Ingrese la distancia operada adicional por otros servicios (Km semanales)",
+                  value = 140,
+                  min = 0,
+                  max = 2100,
+                  step = 20
                 )
               )
             )
           ),
           hr(),
-          h5("Consumo energetico semanal en Kwh"),
+          h5(em("Consumo estimado si se implementan el 100% de las rutas de la zona, en las tipologías vehiculares y tipo de rutas seleccionados")),
+          hr(),
           plotlyOutput("CL_demanda_energetica_plot", height = "350px"),
-          DTOutput("CL_demanda_energetica")
+          h4(em("Tabla de datos de consumo en kWh")),
+          DTOutput("CL_demanda_energetica"),
+          hr(),
+          h3(em("Estimación de necesidades de infraestructura")),
+          h5(em("Dinámica de las zonas (Horas de entrada/salida para estimar ventanas de carga)")),
+          plotlyOutput("CL_horas_act", height = "350px"),
+          h4(em("Variables para la estimación de las necesidades de infraestructura")),
+          h5(em("Seleccione el método de estimación, promedio: consumo semanal promedio o elegir el número de días de recarga")),
+          radioButtons(
+            inputId  = "demanda_tipo_calculo",
+            label    = "Método de estimación:",
+            choices  = c("Promedio" = "promedio", "Factor de utilización diaria" = "factor"),
+            selected = "promedio",
+            inline   = TRUE
+          ),
+          conditionalPanel(
+            condition = "input.demanda_tipo_calculo == 'factor'",
+            column(
+              width = 5,
+                sliderInput(
+                  inputId = "demanda_factor_slider",
+                  label   = "Elija el número de días en los que se repartirá la recarga semanal",
+                  min     = 1,
+                  max     = 7,
+                  value   = 3,
+                  step    = 1
+              )
+            )
+          ),
+          
+          
+          h6(em("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal")),
+          h6(em("Factor de utilización: Factor de carga diaria respecto al consumo semanal. 1: 1 carga semanal, 0,2: 5 cargas semanales")),
+          hr(),
+          h5("Consumo energetico semanal en Kwh"),
+          
+          h4("Estimación de infraestructura de carga"),
+          h5("Dinámica de operación de la zona")
+          #DTOutput("CL_tabla_horaria"),
+          
+          
         )
       ),
       
@@ -1239,6 +1276,82 @@ output$CL_demanda_energetica_plot <- renderPlotly({
     )
 })
 ## 2.3.2.1. Datos de consumo
+## 2.3.2.2. Dinámica de la zona
+
+output$CL_horas_act <- renderPlotly({
+  data <- req(rutasSubDataset())
+  
+  cols <- c("SR_H_Ini_R1", "SR_H_Ini_Jornada", "SR_H_Fin_Jornada", "SR_H_Ini_R2")
+  
+  # 1. Creación del eje X continuo (04:00 a 20:00 cada 15 mins)
+  fecha_ref <- Sys.Date()
+  grid_intervalos <- data.frame(
+    intervalo = seq(
+      from = as.POSIXct(paste(fecha_ref, "04:00:00")),
+      to   = as.POSIXct(paste(fecha_ref, "20:00:00")),
+      by   = "15 mins"
+    )
+  ) %>% 
+    mutate(intervalo_texto = format(intervalo, "%H:%M"))
+  
+  # 2. Procesamiento de horas y redondeo hacia abajo
+  data_proc <- data %>%
+    mutate(across(all_of(cols), ~ ifelse(.x == "N/A" | is.na(.x), NA, .x))) %>%
+    mutate(across(all_of(cols), ~ {
+      time_obj <- lubridate::parse_date_time(.x, orders = c("HM", "HMS"))
+      lubridate::floor_date(time_obj, "15 mins")
+    }))
+  
+  # 3. Transformar y resumir conteos por intervalo y variable
+  resumen <- data_proc %>%
+    pivot_longer(
+      cols = all_of(cols),
+      names_to = "Variable",
+      values_to = "Hora_Redondeada"
+    ) %>%
+    filter(!is.na(Hora_Redondeada)) %>%
+    mutate(intervalo_texto = format(Hora_Redondeada, "%H:%M")) %>%
+    group_by(intervalo_texto, Variable) %>%
+    summarise(Conteo = n(), .groups = "drop")
+  
+  # 4. Cruce con el eje completo, rellenado de vacíos y ASIGNACIÓN DE ORDEN/ETIQUETAS
+  datos_grafica <- grid_intervalos %>%
+    select(Hora = intervalo_texto) %>%
+    left_join(resumen, by = c("Hora" = "intervalo_texto")) %>%
+    tidyr::complete(Hora, Variable = cols, fill = list(Conteo = 0)) %>%
+    filter(!is.na(Variable)) %>%
+    # Factorizar para forzar el orden y mapear las etiquetas personalizadas
+    mutate(Variable = factor(
+      Variable,
+      levels = c("SR_H_Ini_R1", "SR_H_Ini_Jornada", "SR_H_Fin_Jornada", "SR_H_Ini_R2"),
+      labels = c(
+        "Hora inicio del recorrido de ida",
+        "Hora de inicio de clases",
+        "Hora de fin de clases",
+        "Hora de inicio del recorrido de regreso"
+      )
+    ))
+  
+  # 5. Generar gráfica de barras agrupadas
+  plot_ly(
+    data = datos_grafica,
+    x = ~Hora,
+    y = ~Conteo,
+    color = ~Variable,
+    type = "bar"
+  ) %>%
+    layout(
+      barmode = "group",
+      xaxis = list(
+        title = "Intervalo de Tiempo (15 min)",
+        tickangle = -45,
+        type = "category"
+      ),
+      yaxis = list(title = "Cantidad de servicios"),
+      legend = list(orientation = "h", x = 0, y = 1.15),
+      margin = list(b = 80)
+    )
+})
 }
 
 
