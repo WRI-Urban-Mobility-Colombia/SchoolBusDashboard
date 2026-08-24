@@ -69,6 +69,22 @@ rutasv2R1 <- rutasv2R1 %>% mutate(disHorasSem = SR_Toal_H * SR_Tot_Dias)
 
 poligonosV2$NoRutas <- sapply(poligonosV2$id, function(x) sum(rutasv2R1$id_2 == x, na.rm = TRUE))
 
+
+##----------------------------------------------------------------------------##
+##CSS Print
+##----------------------------------------------------------------------------##
+
+css_impresion <- "
+@media print {
+  .main-header, .main-sidebar, .btn-imprimir {
+    display: none !important;
+  }
+  .content-wrapper, .right-side {
+    margin-left: 0 !important;
+    background-color: #ffffff !important;
+  }
+}
+"
 ##----------------------------------------------------------------------------##
 ##UI
 ##----------------------------------------------------------------------------##
@@ -116,15 +132,71 @@ ui <- dashboardPage(
     # CSS enfocado únicamente en eliminar scrolls sobrantes
     tags$head(
       tags$style(HTML("
-        /* Forzar alto completo al mapa */
-        .content-wrapper, .right-side {
-          background-color: #f4f6f9;
-        }
-        #mapa_interactivo, #mapa_clusteres {
-          height: calc(90vh - 200px) !important;
-        }
+    /* Estilos generales (pantalla) */
+    .content-wrapper, .right-side {
+      background-color: #f4f6f9;
+    }
+    #mapa_interactivo, #mapa_clusteres {
+      height: calc(90vh - 200px) !important;
+    }
 
-      "))
+    /* Reglas para modo impresión continua en 1 sola página */
+    @media print {
+      /* Configurar página en horizontal sin márgenes externos por defecto */
+      @page {
+        size: letter landscape; /* O usa 'letter landscape' */
+        margin: 5mm;
+      }
+
+      /* Ocultar elementos de navegación y botones */
+      .main-header, .main-sidebar, .btn-imprimir, .main-footer {
+        display: none !important;
+      }
+
+      /* Restablecer el contenedor principal */
+      html, body, .wrapper, .content-wrapper, .right-side {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: #ffffff !important;
+        overflow: visible !important;
+      }
+
+      /* Evitar que Bootstrap rompa las columnas en filas individuales */
+      .row {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        page-break-inside: avoid !important;
+      }
+
+      /* Mantener el ancho de las columnas originales de shinydashboard */
+      .col-sm-6, .col-md-6 { width: 50% !important; float: left !important; }
+      .col-sm-4, .col-md-4 { width: 33.333% !important; float: left !important; }
+      .col-sm-3, .col-md-3 { width: 25% !important; float: left !important; }
+      .col-sm-12, .col-md-12 { width: 100% !important; }
+
+      /* Forzar que los contenedores y mapas se ajusten proporcionalmente */
+      .box {
+        margin-bottom: 10px !important;
+        page-break-inside: avoid !important;
+      }
+
+      #mapa_interactivo, #mapa_clusteres {
+        height: 420px !important; /* Altura calculada para encajar en hoja horizontal */
+        width: 100% !important;
+        page-break-inside: avoid !important;
+      }
+
+      /* Escalar globalmente si tu dashboard sigue estando muy cargado */
+      .content {
+        transform: scale(0.80);
+        transform-origin: top left;
+        width: 108% !important; /* Compensar la reducción de escala */
+      }
+    }
+  "))
     ),
     
     tabItems(
@@ -286,6 +358,38 @@ ui <- dashboardPage(
               multiple = TRUE
             )
           ),
+          box(
+            width = 12,
+            title = "Cumplimiento de la meta del PCBE",
+            status = "primary",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            collapsed = FALSE,
+            fluidRow(
+              column(
+                width = 6,
+                h4("Beneficiarios atendidos"),
+                valueBoxOutput("ben_atendidos", width = 12)  
+              ),
+              column(
+                width = 6,
+                h4("Meta de la política pública"),
+                valueBoxOutput("metaPCBE", width = 12)  
+              )
+            ),
+            h5("Porcentaje"),
+            plotlyOutput("plotly_gauge", height = "250px")
+          ),
+          box(
+            width = 12,
+            title = "Horas contratadas a la semana",
+            status = "primary",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            collapsed = TRUE,
+            h5("Total de horas en una semana"),
+            DTOutput("CL_tabla_horas")
+          ),
           ## Cuadro de rutas
           box(
             width = 12,
@@ -316,38 +420,6 @@ ui <- dashboardPage(
             collapsed = TRUE,
             h5("Parte de los factores de utilización promedio"),
             DTOutput("CL_tabla_veh")
-          ),
-          box(
-            width = 12,
-            title = "Horas contratadas a la semana",
-            status = "primary",
-            solidHeader = TRUE,
-            collapsible = TRUE,
-            collapsed = TRUE,
-            h5("Total de horas en una semana"),
-            DTOutput("CL_tabla_horas")
-          ),
-          box(
-            width = 12,
-            title = "Cumplimiento de la meta del PCBE",
-            status = "primary",
-            solidHeader = TRUE,
-            collapsible = TRUE,
-            collapsed = TRUE,
-            fluidRow(
-              column(
-                width = 6,
-                h4("Beneficiarios atendidos"),
-                valueBoxOutput("ben_atendidos", width = 12)  
-              ),
-              column(
-                width = 6,
-                h4("Meta de la política pública"),
-                valueBoxOutput("metaPCBE", width = 12)  
-              )
-            ),
-            h5("Porcentaje"),
-            plotlyOutput("plotly_gauge", height = "250px")
           )
         ),
         ### Sección de demanda energética
@@ -448,7 +520,17 @@ ui <- dashboardPage(
           #DTOutput("CL_tabla_horaria"),
           
           
-        )
+        ),
+        box(
+          actionButton(
+            inputId = "btn_imprimir",
+            label = "Exportar resultado en pdf",
+            icon = icon("file-pdf"),
+            class = "btn-success btn-imprimir",
+            onclick = "window.print();"
+          )
+        ),
+        
       ),
       
       ## Pestaña 4: Documentación
