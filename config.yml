@@ -9,11 +9,11 @@ default:
 
   # Consumos en kWh/Km
   factor_consumo:
-    bus: 1.1
-    buseta: 0.7
-    microbus: 0.5
-    van: 1.0
-    camioneta: 0.1
+    BUS: 1.1
+    BUSETA: 0.7
+    MICROBUS: 0.5
+    VAN: 1.0
+    CAMIONETA: 0.1
 
   modif_consumo:
     perdidas: 0.2

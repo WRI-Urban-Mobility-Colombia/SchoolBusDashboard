@@ -1250,7 +1250,16 @@ CLConsSubDataset <- reactive({
     req(input$Kms_ad, CL_tabla_veh_data())
     ## Multiplicar los km otros servicios
     tabla_adicional <- CL_tabla_veh_data() %>%
-      mutate(across(where(is.numeric), ~ .x * input$Kms_ad))
+  mutate(
+    # 1. Calculamos el factor dinámico para cada fila (usando 'Tipo de Vehículo' como clave)
+    factor_veh = purrr::map_dbl(`Tipo de Vehículo`, ~ dplyr::coalesce(CFG$factor_consumo[[as.character(.x)]], 1.0)),
+    
+    # 2. Multiplicamos las columnas numéricas excluyendo la columna auxiliar 'factor_veh'
+    across(
+      where(is.numeric) & !matches("factor_veh"), 
+      ~ .x * (input$Kms_ad * factor_perdidas * factor_kmvac * factor_veh)
+    )
+  )
     tabla_Km <- tabla_Km %>%
       left_join(tabla_adicional, by = "Tipo de Vehículo", suffix = c("", "_extra")) %>%
       mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
