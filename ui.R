@@ -61,6 +61,7 @@ rutasv2R1 <- rutasv2 %>%
   ungroup()
 print(rutasv2R1)
 
+
 ## Calcular variables semanales (distancia semanal y horas semanales)
 
 rutasv2R1 <- rutasv2R1 %>% mutate(disRutaSem = Dis_ruta_m * SR_Tot_Dias)
@@ -1414,7 +1415,7 @@ output$CL_demanda_energetica_plot <- renderPlotly({
         title = list(text = "")
       ),
       margin = list(l = 50, r = 20, t = 40, b = 40),
-      hoverlabel = list(bgcolor = "white")
+      hoverlabel = list(bgcolor = "purple")
     ) %>%
     config(
       displayModeBar = TRUE,
