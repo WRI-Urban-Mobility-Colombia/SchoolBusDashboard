@@ -508,16 +508,21 @@ ui <- dashboardPage(
               step = 0.5
             )
           ),
-
-          
-          
           h6(em("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal")),
           h6(em("Factor de utilización: Factor de carga diaria respecto al consumo semanal. 1: 1 carga semanal, 0,2: 5 cargas semanales")),
           hr(),
-          h5("Consumo energetico semanal en Kwh"),
           
-          h4("Estimación de infraestructura de carga"),
-          h5("Dinámica de operación de la zona")
+          h4(em("Energía diaria requerida")),
+          uiOutput("CL_cons_diario"),
+          h4(em("Potencia diaria")),
+          uiOutput("CL_pot_req"),
+          h4(em("Cargadores requeridos")),
+          h4(em("Cargadores disponibles")),
+          h4(em("Porcentaje de utilización"))
+          #h5("Consumo energetico semanal en Kwh"),
+          
+          #h4("Estimación de infraestructura de carga"),
+          #h5("Dinámica de operación de la zona")
           #DTOutput("CL_tabla_horaria"),
           
           
@@ -1271,7 +1276,7 @@ CLConsSubDataset <- reactive({
       clave_vehiculo = tolower(gsub("[ -]", "_", `Tipo de Vehículo`)),
       
       # Obtener el factor del config. Si no existe la clave para algún vehículo, usa 1 por defecto
-      factor_veh = dplyr::coalesce(CFG$factor_consumo[[clave_vehiculo]], 1.0)
+      factor_veh = purrr::map_dbl(`Tipo de Vehículo`, ~ dplyr::coalesce(CFG$factor_consumo[[as.character(.x)]], 1.0)),
     ) %>%
     # Multiplicar los valores de los kilómetros por el factor de consumo
     mutate(across(all_of(cols_rutas), ~ .x * factor_veh * (factor_perdidas))) %>%
@@ -1405,7 +1410,8 @@ output$CL_demanda_energetica_plot <- renderPlotly({
       "<b>Tipo de Ruta:</b> ", Tipo_Ruta, "<br>",
       "<b>Consumo:</b> ", Consumo_fmt, " kWh"
     ),
-    hoverinfo = "text"
+    hoverinfo = "text",
+    textposition = "none"
   ) %>%
     layout(
       barmode = "stack",
@@ -1512,6 +1518,68 @@ output$CL_horas_act <- renderPlotly({
       margin = list(b = 80)
     )
 })
+## 2.3.2.3. Valores de recarga
+output$CL_cons_diario <- renderUI({
+  consData <- req(CLConsSubDataset(), input$demanda_tipo_calculo)
+  
+  # 1. Sumar todos los valores de las columnas numéricas de consData
+  total_energia <- consData %>%
+    dplyr::select(where(is.numeric)) %>%
+    as.matrix() %>%
+    sum(na.rm = TRUE)
+  
+  # 2. Definir el divisor según el tipo de cálculo
+  divisor <- if (input$demanda_tipo_calculo == "Promedio") {
+    5
+  } else {
+    req(input$demanda_factor_slider)
+    input$demanda_factor_slider
+  }
+  
+  # 3. Dividir y formatear
+  resultado <- total_energia / divisor
+  total_fmt <- format(round(resultado, 2), big.mark = ".", decimal.mark = ",")
+  
+  # 4. Renderizar la tarjeta
+  bslib::value_box(
+    title = "Energía a utilizar al día",
+    value = paste0(total_fmt, " kWh"),
+    showcase = bsicons::bs_icon("lightning-charge-fill"),
+    theme = "bg-gradient-indigo-purple"
+  )
+})
+output$CL_pot_req <-renderUI({
+  consData <- req(CLConsSubDataset(), input$demanda_tipo_calculo, input$VentanaCarga)
+  
+  # 1. Sumar todos los valores de las columnas numéricas de consData
+  total_energia <- consData %>%
+    dplyr::select(where(is.numeric)) %>%
+    as.matrix() %>%
+    sum(na.rm = TRUE)
+  
+  # 2. Definir el divisor según el tipo de cálculo
+  divisor <- if (input$demanda_tipo_calculo == "Promedio") {
+    5
+  } else {
+    req(input$demanda_factor_slider)
+    input$demanda_factor_slider
+  }
+  
+  # 3. Dividir y formatear
+  resultado <- total_energia / divisor/input$VentanaCarga
+  total_fmt <- format(round(resultado, 2), big.mark = ".", decimal.mark = ",")
+  potencia <- format(round(resultado, 2), big.mark = ".", decimal.mark = ",")
+  
+  # 4. Renderizar la tarjeta
+  bslib::value_box(
+    title = "Energía a utilizar al día",
+    value = paste0(total_fmt, " kWh"),
+    showcase = bsicons::bs_icon("lightning-charge-fill"),
+    theme = "bg-gradient-indigo-purple"
+  )
+  
+})
+
 }
 
 
