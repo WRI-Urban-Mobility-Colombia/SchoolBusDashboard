@@ -38,6 +38,11 @@ CFG <- config::get(file = "config.yml")
 poligonosV2 <- readRDS("Assets/RDS/poligonosV2.rds")
 rutasv2 <- readRDS("Assets/RDS/rutas.rds")
 
+pat_ele_buff <-readRDS("Assets/RDS/P_Elec_buff.rds")
+pat_ele_punt <-readRDS("Assets/RDS/P_Elec_punt.rds")
+punt_ad_buff <-readRDS("Assets/RDS/P_Ad_buff.rds")
+punt_ad_punt <-readRDS("Assets/RDS/P_Ad_punt.rds")
+
 ##----------------------------------------------------------------------------##
 ##Variables adicionales
 ##----------------------------------------------------------------------------##
@@ -138,14 +143,14 @@ ui <- dashboardPage(
       background-color: #f4f6f9;
     }
     #mapa_interactivo, #mapa_clusteres {
-      height: calc(90vh - 200px) !important;
+      height: calc(100vh - 50px) !important;
     }
 
     /* Reglas para modo impresión continua en 1 sola página */
     @media print {
       /* Configurar página en horizontal sin márgenes externos por defecto */
       @page {
-        size: letter landscape; /* O usa 'letter landscape' */
+        size: A1 portrait; /* O usa 'letter landscape' */
         margin: 5mm;
       }
 
@@ -226,20 +231,20 @@ ui <- dashboardPage(
           
           # 2. Mapa ocupando 2/3 de la pantalla (costado izquierdo)
           column(
-            width = 8,
+            width = 9,
             box(
               title = "Análisis por sector",
               status = "primary",
               solidHeader = TRUE,
               width = NULL, # Al estar dentro de column(), el ancho se ajusta al contenedor
               collapsible = FALSE,
-              leafletOutput("mapa_interactivo", height = "600px") 
+              leafletOutput("mapa_interactivo") 
             )
           ),
           
           # Costado derecho (1/3 de pantalla)
           column(
-            width = 4,
+            width = 3,
             
             # Filtros
             box(
@@ -311,80 +316,85 @@ ui <- dashboardPage(
       ## Pestaña 3: Explore sus zonas
       tabItem(
         tabName = "tab_mapa2",
-        #fluidRow(
-        #  column(width = 4, valueBoxOutput("box_beneficiarios1", width = 12)),
-        #  column(width = 4, valueBoxOutput("box_beneficiarios2", width = 12)),
-        #  column(width = 4, valueBoxOutput("box_beneficiarios3", width = 12))
-        #),
-        column(
-          width = 5,
-          box(
-            title = "Mapa de exploracion de clústeres",
-            status = "primary",
-            solidHeader = TRUE,
-            width = 12,
-            collapsible = FALSE,
-            leafletOutput("mapa_clusteres")
-          )
-        ),
-        column(
-          width = 7,
-          # caja de controles del mapa
-          box(
-            width = 12,
-            title = "Filtros de clústeres",
-            status = "primary",
-            collapsible = TRUE,
-            collapsed = FALSE,
-            solidHeader = TRUE,
-            selectInput(
-              inputId = "filtro_cluster",
-              label = "Seleccione la zona",
-              choices = c(sort(unique(poligonosV2$Cluster))),
-              selected = "Todos",
-              multiple = TRUE
-            ),
-            selectInput(
-              inputId = "filtro_tipo_ruta_clus",
-              label = "Seleccione los tipos de ruta",
-              choices = c("Todos",sort(unique(rutasv2R1$SR_Tip_Ruta))),
-              selected = "Todos",
-              multiple = TRUE
-            ),
-            selectInput(
-              inputId = "filtro_tipo_veh_clus",
-              label = "Seleccione el tipo de vehículo",
-              choices = c("Todos", sort(unique(rutasv2R1$SR_Veh_Aj_2))),
-              selected = "Todos",
-              multiple = TRUE
+        fluidRow(
+          column(
+            width = 8,
+            box(
+              title = "Mapa de exploracion de clústeres",
+              status = "primary",
+              solidHeader = TRUE,
+              width = 12,
+              collapsible = FALSE,
+              leafletOutput("mapa_clusteres")
             )
           ),
-          box(
-            width = 12,
-            title = "Cumplimiento de la meta del PCBE",
-            status = "primary",
-            solidHeader = TRUE,
-            collapsible = TRUE,
-            collapsed = FALSE,
-            fluidRow(
-              column(
-                width = 6,
-                h4("Beneficiarios atendidos"),
-                valueBoxOutput("ben_atendidos", width = 12)  
+          column(
+            width  = 4,
+            box(
+              width = 12,
+              title = "Filtros de clústeres",
+              status = "primary",
+              collapsible = TRUE,
+              collapsed = FALSE,
+              solidHeader = TRUE,
+              selectInput(
+                inputId = "filtro_cluster",
+                label = "Seleccione la zona",
+                choices = c(sort(unique(poligonosV2$Cluster))),
+                selected = "Todos",
+                multiple = TRUE
               ),
-              column(
-                width = 6,
-                h4("Meta de la política pública"),
-                valueBoxOutput("metaPCBE", width = 12)  
+              selectInput(
+                inputId = "filtro_tipo_ruta_clus",
+                label = "Seleccione los tipos de ruta",
+                choices = c("Todos",sort(unique(rutasv2R1$SR_Tip_Ruta))),
+                selected = "Todos",
+                multiple = TRUE
+              ),
+              selectInput(
+                inputId = "filtro_tipo_veh_clus",
+                label = "Seleccione el tipo de vehículo",
+                choices = c("Todos", sort(unique(rutasv2R1$SR_Veh_Aj_2))),
+                selected = "Todos",
+                multiple = TRUE
               )
             ),
-            h5("Porcentaje"),
-            plotlyOutput("plotly_gauge", height = "250px")
-          ),
+            box(
+              width = 12,
+              title = "Cumplimiento de la meta del PCBE",
+              status = "primary",
+              solidHeader = TRUE,
+              collapsible = TRUE,
+              collapsed = FALSE,
+              fluidRow(
+                column(
+                  width = 6,
+                  h4("Beneficiarios atendidos"),
+                  valueBoxOutput("ben_atendidos", width = 12)  
+                ),
+                column(
+                  width = 6,
+                  h4("Meta de la política pública"),
+                  valueBoxOutput("metaPCBE", width = 12)  
+                )
+              ),
+              h5("Porcentaje"),
+              plotlyOutput("plotly_gauge", height = "250px")
+            )
+          )
+        ),
+        box(
+          width = 12,
+          title = "Parámetros operacionales de la propuesta",
+          status = "primary",
+          solidHeader = TRUE,
+          collapsible = TRUE,
+          collapsed = TRUE,
+          # Horas contratadas a la semana
           box(
             width = 12,
             title = "Horas contratadas a la semana",
-            status = "primary",
+            status = "success",
             solidHeader = TRUE,
             collapsible = TRUE,
             collapsed = TRUE,
@@ -395,7 +405,7 @@ ui <- dashboardPage(
           box(
             width = 12,
             title = "Cantidad de rutas",
-            status = "primary",
+            status = "success",
             solidHeader = TRUE,
             collapsible = TRUE,
             collapsed = TRUE,
@@ -405,7 +415,7 @@ ui <- dashboardPage(
           box(
             width = 12,
             title = "Distancias (Km) semanales por tipo de vehiculo y tipo de ruta",
-            status = "primary",
+            status = "success",
             solidHeader = TRUE,
             collapsible = TRUE,
             collapsed = TRUE,
@@ -415,7 +425,7 @@ ui <- dashboardPage(
           box(
             width = 12,
             title = "Cantidad de vehículos (Aproximado al siguiente entero)",
-            status = "primary",
+            status = "success",
             solidHeader = TRUE,
             collapsible = TRUE,
             collapsed = TRUE,
@@ -635,8 +645,35 @@ server <- function(input, output, session) {
 ##--------------------------------------------------------------------------##  
 ## 2.2. Mapa interactivo base-----------------------------------------------##
   output$mapa_interactivo <- renderLeaflet({
+    bus_icon <- makeAwesomeIcon(
+      icon        = "bus",
+      iconColor   = "white",
+      markerColor = "green",
+      library     = "fa" # FontAwesome
+    )
+    cargador_icon <- makeAwesomeIcon(
+      icon        = "bolt",             # Cambia 'bus' por 'bolt' o 'charging-station'
+      iconColor   = "white",           
+      markerColor = "blue",             
+      library     = "fa"                
+    )
+    
     leaflet(poligonosV2) %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
+      addPolygons(
+        data = pat_ele_buff,
+        fillColor = "#4db608",
+        fillOpacity = 0.5,
+        weight = 2,
+        dashArray = "4,4",
+        group = "Buffer ") %>%
+      addPolygons(
+        data = punt_ad_buff,
+        fillColor = "#1335f3",
+        fillOpacity = 0.5,
+        weight = 2,
+        dashArray = "4,4",
+        group = "Buffer ") %>%
       addPolygons(
         layerId     = ~id,
         fillColor   = "#ffffbf",
@@ -644,7 +681,15 @@ server <- function(input, output, session) {
         color       = "#fc8d59",
         weight      = 1.5,
         label       = ~paste("Polígono:", id, " | Cluster:", Cluster)
-      ) %>%
+      )%>%
+      addAwesomeMarkers(
+        data = pat_ele_punt,
+        icon = bus_icon, 
+        group = "Patios eléctricos SITP")%>%
+      addAwesomeMarkers(
+        data = punt_ad_punt,
+        icon = cargador_icon, 
+        group = "Patios eléctricos SITP")%>%
       addLayersControl(
         overlayGroups = c("Polígonos", "Polígonos Seleccionados", "Rutas Filtradas"),
         options       = layersControlOptions(collapsed = FALSE)
@@ -911,8 +956,20 @@ server <- function(input, output, session) {
   
   output$mapa_clusteres <- renderLeaflet({
     datos <- poligonos_filtrados()
-    leaflet(datos) %>%
+    bbox <- sf::st_bbox(poligonosV2)
+    
+    leaflet(datos,
+            options = leafletOptions(
+              minZoom = 10,
+              maxZoom = 18
+            )) %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
+      setMaxBounds(
+        lng1 = as.numeric(bbox["xmin"]),
+        lat1 = as.numeric(bbox["ymin"]),
+        lng2 = as.numeric(bbox["xmax"]),
+        lat2 = as.numeric(bbox["ymax"])
+      )%>%
       addPolygons(
         layerId     = ~id,
         fillColor   = ~factpal_patios(Cluster),
@@ -1657,13 +1714,15 @@ CL_KmSubdataset <- reactive({
           where(is.numeric), 
           ~ .x * input$Kms_ad
         )
-      )
-    
+      )%>%
+      select(-matches("^total$", ignore.case = TRUE))
+      
     tabla_Km <- tabla_Km %>%
       left_join(tabla_adicional, by = "Tipo de Vehículo", suffix = c("", "_extra")) %>%
       mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
   }
-  
+
+
   # TOTALIZACIÓN, SELECCIÓN DE COLUMNAS Y REDONDEO A ENTERO
   tabla_Km <- tabla_Km %>%
     rowwise() %>%
