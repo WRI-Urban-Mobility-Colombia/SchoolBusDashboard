@@ -27,7 +27,7 @@ default:
     
   emisiones:
     BUS: 
-      cO: 1.89
+      CO: 1.89
       VOC: 0.11
       NOX: 12.05
       SOX: 0.02
