@@ -545,8 +545,9 @@ ui <- dashboardPage(
             collapsible = TRUE,
             collapsed = TRUE,
             h5(em("Emisiones escolares expandidas al calendario escolar, km adicionales a 52 semanas")),
-            plotlyOutput("CL_emisiones_evitadas_plot", height = "450px"),
-            DTOutput("CL_emisiones_evitadas")
+            plotlyOutput("CL_emisiones_plot", height = "350px"),
+            h5(em("Tabla de datos")),
+            DTOutput("CL_emisiones_table")
           )
           #h5("Consumo energetico semanal en Kwh"),
           
@@ -1615,6 +1616,61 @@ output$CL_pot_req <-renderUI({
   ))
 })
 ##2.4. Emisiones
+emisionesSubDataset <- reactive({
+  datos <- req(rutasSubDataset())
+  req(datos, nrow(datos) > 0)
+  tabla_Km <- datos %>%
+    # Eliminar geometría si es un objeto sf/spatial
+    sf::st_drop_geometry() %>%
+    group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
+    summarise(
+      Total_disRutaSem = sum(disRutaSem/1000, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    # Pivotear para tener Tipos de Ruta en columnas y Vehículos en filas
+    pivot_wider(
+      names_from = SR_Tip_Ruta,
+      values_from = Total_disRutaSem,
+      values_fill = 0
+    ) %>%
+    rename(`Tipo de Vehículo` = SR_Veh_Aj_2)
+  
+  # BLOQUE CONDICIONAL PARA KILÓMETROS EXTRAS
+  if (isTruthy(input$EscenarioKm) && input$EscenarioKm == "extras") {
+    req(input$Kms_ad, CL_tabla_veh_data())
+    
+    ## Escalar directamente los kilómetros adicionales por la entrada del usuario
+    tabla_adicional <- CL_tabla_veh_data() %>%
+      mutate(
+        across(
+          where(is.numeric), 
+          ~ .x * input$Kms_ad
+        )
+      )
+    
+    tabla_Km <- tabla_Km %>%
+      left_join(tabla_adicional, by = "Tipo de Vehículo", suffix = c("", "_extra")) %>%
+      mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
+  }
+
+  return(tabla_Km)
+})
+
+
+output$CL_emisiones_plot <- renderPlotly({
+  data <- req(emisionesSubDataset())
+  print("Tabla entrando al render de emisiones")
+  print(data)
+  plot_ly(data, x = ~1, y = ~1)
+})
+output$CL_emisiones_table <- renderDT({
+  data <- req(emisionesSubDataset())
+  datatable(data, options = list(pageLength = 5))
+})
+
+
+
+
 
 }
 
