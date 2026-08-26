@@ -59,6 +59,8 @@ rutasv2R1 <- rutasv2 %>%
   arrange(Recorrido_ == "R2") %>% # Ordena poniendo "R1" primero (FALSE < TRUE)
   slice(1) %>%
   ungroup()
+print(rutasv2R1)
+
 
 ## Calcular variables semanales (distancia semanal y horas semanales)
 
@@ -111,8 +113,8 @@ ui <- dashboardPage(
     sidebarMenu(
       id = "tab_seleccionada",
       
-      #menuItem("Introducción", tabName = "tab_intro", icon = icon("info-circle")),
-      #menuItem("Documentación", tabName = "documentacion", icon = icon("users")),
+      menuItem("Introducción", tabName = "tab_intro", icon = icon("info-circle")),
+      menuItem("Documentación", tabName = "documentacion", icon = icon("users")),
       menuItem("Cree sus zonas", tabName = "tab_mapa", icon = icon("binoculars")),
       menuItem("Explore zonas creadas", tabName = "tab_mapa2", icon = icon("map")),
       menuItem("Créditos", tabName = "creditos", icon = icon("users"))
@@ -136,7 +138,7 @@ ui <- dashboardPage(
       background-color: #f4f6f9;
     }
     #mapa_interactivo, #mapa_clusteres {
-      height: calc(90vh - 300px) !important;
+      height: calc(90vh - 200px) !important;
     }
 
     /* Reglas para modo impresión continua en 1 sola página */
@@ -424,7 +426,7 @@ ui <- dashboardPage(
         ### Sección de demanda energética
         box(
           width = 12,
-          title = "Infraestructura de carga y emisiones",
+          title = "Demanda energética e infraestructura de recarga",
           status = 'primary',
           solidHeader = TRUE,
           collapsible = TRUE,
@@ -467,18 +469,10 @@ ui <- dashboardPage(
           h4(em("Tabla de datos de consumo en kWh")),
           DTOutput("CL_demanda_energetica"),
           hr(),
-          box(
-            width = 12,
-            title = "Estimación de necesidades de infraestructura",
-            status = "success",
-            solidHeader = TRUE,
-            collapsible = TRUE,
-            collapsed = TRUE,
-            #h3(em("Estimación de necesidades de infraestructura")),
-            h5(em("Dinámica de las zonas (Horas de entrada/salida para estimar ventanas de carga)")),
-            plotlyOutput("CL_horas_act", height = "350px")
-          ),
-          h3(em("Variables para la estimación de las necesidades de infraestructura")),
+          h3(em("Estimación de necesidades de infraestructura")),
+          h5(em("Dinámica de las zonas (Horas de entrada/salida para estimar ventanas de carga)")),
+          plotlyOutput("CL_horas_act", height = "350px"),
+          h4(em("Variables para la estimación de las necesidades de infraestructura")),
           h5(em("Seleccione el método de estimación, promedio: consumo semanal promedio o elegir el número de días de recarga")),
           radioButtons(
             inputId  = "demanda_tipo_calculo",
@@ -515,35 +509,23 @@ ui <- dashboardPage(
             )
           ),
           h6(em("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal")),
+          h6(em("Factor de utilización: Factor de carga diaria respecto al consumo semanal. 1: 1 carga semanal, 0,2: 5 cargas semanales")),
           hr(),
-          fluidRow(
-            column(
-              width = 4,
-              h4(em("Energía diaria requerida")),
-              uiOutput("CL_cons_diario"),
-            ),
-            column(
-              width = 4,
-              h4(em("Potencia total")),
-              uiOutput("CL_pot_req"),
-            ),
-            column(
-              width = 4,
-              h4(em("Cargadores requeridos"))
-              ## Cargar Output con dato de cargadores
-            )
-          ),
-          box(
-            width = 12,
-            title = "Emisiones evitadas",
-            status = "success",
-            solidHeader = TRUE,
-            collapsible = TRUE,
-            collapsed = TRUE,
-            h5(em("Dinámica de las zonas (Horas de entrada/salida para estimar ventanas de carga)")),
-            plotlyOutput("CL_emisiones_evitadas_plot", height = "450px"),
-            DTOutput("CL_emisiones_evitadas"),
-          )
+          
+          h4(em("Energía diaria requerida")),
+          uiOutput("CL_cons_diario"),
+          h4(em("Potencia diaria")),
+          uiOutput("CL_pot_req"),
+          h4(em("Cargadores requeridos")),
+          h4(em("Cargadores disponibles")),
+          h4(em("Porcentaje de utilización"))
+          #h5("Consumo energetico semanal en Kwh"),
+          
+          #h4("Estimación de infraestructura de carga"),
+          #h5("Dinámica de operación de la zona")
+          #DTOutput("CL_tabla_horaria"),
+          
+          
         ),
         box(
           actionButton(
@@ -615,7 +597,7 @@ server <- function(input, output, session) {
     }
     
     seleccionados(nuevo_vector)
-
+    print(nuevo_vector)
   })
 ##--------------------------------------------------------------------------##  
 ## 2.2. Mapa interactivo base-----------------------------------------------##
@@ -645,6 +627,7 @@ server <- function(input, output, session) {
   
   observe({
     vector_actual <- seleccionados()
+    print(vector_actual)
     
     proxy <- leafletProxy("mapa_interactivo")
     proxy %>% clearGroup("seleccion_roja")
@@ -830,9 +813,9 @@ server <- function(input, output, session) {
       sum(rutas_filtradas$disRutaSem, na.rm = TRUE)/1000
     } else { 0 }
     
-    ben_txt   <- format(total_ben, big.mark = ".")
-    rutas_txt <- format(total_rutas, big.mark = ".")
-    km_txt    <- format(round(total_km, 0), big.mark = ".")
+    ben_txt   <- format(total_ben, big.mark = ",")
+    rutas_txt <- format(total_rutas, big.mark = ",")
+    km_txt    <- format(round(total_km, 0), big.mark = ",")
     
     valor_resumen <- paste(ben_txt, " Beneficiarios |", rutas_txt, " Rutas |", km_txt, " Km")
     
@@ -848,10 +831,12 @@ server <- function(input, output, session) {
 
   output$tabla_resumen_rutas <- renderDT({
     req(rutas_filtradas_reactivas())
+    print(rutas_filtradas_reactivas())
     # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
     if (nrow(rutas_filtradas_reactivas()) == 0) {
       return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
     }
+    print(rutas_filtradas_reactivas)
     tabla_resumen <- rutas_filtradas_reactivas() %>%
       sf::st_drop_geometry() %>%
       group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
@@ -932,6 +917,7 @@ rutasSubDataset <- reactive({
   ## Filtra en rutas y almacena en rutasSubDataset
   datos_filtrados <-rutasv2R1 %>%filter(Id_Hexagono %in% ids_presentes)
   # Filtro por tipo de ruta
+  print("Entrando al filtro de la base de datos de las rutas")
   if (!is.null(input$filtro_tipo_ruta_clus) && !"Todos" %in% input$filtro_tipo_ruta_clus) {
     datos_filtrados <- datos_filtrados %>% 
       filter(SR_Tip_Ruta %in% input$filtro_tipo_ruta_clus)
@@ -951,10 +937,12 @@ rutasSubDataset <- reactive({
 ## 2.3.1.1. Pivot table Km
 output$tabla_resumen_km <- renderDT({
   req(rutasSubDataset())
+  print(rutasSubDataset)
   # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
   if (nrow(rutasSubDataset()) == 0) {
     return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
   }
+  print(rutasSubDataset)
   tabla_resumen <- rutasSubDataset() %>%
     sf::st_drop_geometry() %>%
     group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
@@ -1122,12 +1110,12 @@ CL_tabla_veh_data <- reactive({
 ## 2.3.1.4. Pivot table Cantidad de horas a la semana
 output$CL_tabla_horas <- renderDT({
   req(rutasSubDataset())
-  
+  print(rutasSubDataset)
   # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
   if (nrow(rutasSubDataset()) == 0) {
     return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
   }
-  
+  print(rutasSubDataset)
   tabla_resumen <- rutasSubDataset() %>%
     sf::st_drop_geometry() %>%
     group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
@@ -1231,6 +1219,8 @@ output$plotly_gauge <- renderPlotly({
 ## 2.3.2. Reactividad consumo (Dataset)
 CLConsSubDataset <- reactive({
   datos <- rutasSubDataset()
+  print("rutasSubDataset")
+  print(datos)
   
   # Factor pérdidas 
   factor_perdidas <- 1 + dplyr::coalesce(CFG$modif_consumo$perdidas, 0)
@@ -1272,7 +1262,7 @@ CLConsSubDataset <- reactive({
     # 2. Multiplicamos las columnas numéricas excluyendo la columna auxiliar 'factor_veh'
     across(
       where(is.numeric) & !matches("factor_veh"), 
-      ~ .x * (input$Kms_ad * factor_perdidas * factor_veh)
+      ~ .x * (input$Kms_ad * factor_perdidas * factor_kmvac * factor_veh)
     )
   )
     tabla_Km <- tabla_Km %>%
@@ -1381,6 +1371,7 @@ output$CL_demanda_energetica <- renderDT({
 output$CL_demanda_energetica_plot <- renderPlotly({
   # 1. Validar datos reactivos
   df_demanda <- req(CLConsSubDataset())
+  print(df_demanda)
   
   # 2. Manejo de dataset vacío
   if (nrow(df_demanda) == 0) {
@@ -1528,13 +1519,11 @@ output$CL_horas_act <- renderPlotly({
     )
 })
 ## 2.3.2.3. Valores de recarga
-output$CL_cons_diario <- renderValueBox({
+output$CL_cons_diario <- renderUI({
   consData <- req(CLConsSubDataset(), input$demanda_tipo_calculo)
   
   # 1. Sumar todos los valores de las columnas numéricas de consData
-  
   total_energia <- consData %>%
-    dplyr::select(-dplyr::any_of("Total")) %>%
     dplyr::select(where(is.numeric)) %>%
     as.matrix() %>%
     sum(na.rm = TRUE)
@@ -1552,21 +1541,18 @@ output$CL_cons_diario <- renderValueBox({
   total_fmt <- format(round(resultado, 2), big.mark = ".", decimal.mark = ",")
   
   # 4. Renderizar la tarjeta
-  return(valueBox(
-    value = format(paste0(total_fmt, " kWh"), big.mark = "."), # Formato con separador de miles
-    subtitle = "Energía diaria a utilizar",
-    icon = icon("users"),
-    #icon = shiny::icon(bsicons::bs_icon("lightning-charge-fill") %>% as.character() %>% HTML()),
-    #icon = bsicons::bs_icon("lightning-charge-fill"),
-    color = "blue"
-  ))
+  bslib::value_box(
+    title = "Energía a utilizar al día",
+    value = paste0(total_fmt, " kWh"),
+    showcase = bsicons::bs_icon("lightning-charge-fill"),
+    theme = "bg-gradient-indigo-purple"
+  )
 })
-output$CL_pot_req <-renderValueBox({
+output$CL_pot_req <-renderUI({
   consData <- req(CLConsSubDataset(), input$demanda_tipo_calculo, input$VentanaCarga)
   
   # 1. Sumar todos los valores de las columnas numéricas de consData
   total_energia <- consData %>%
-    dplyr::select(-dplyr::any_of("Total")) %>%
     dplyr::select(where(is.numeric)) %>%
     as.matrix() %>%
     sum(na.rm = TRUE)
@@ -1585,40 +1571,14 @@ output$CL_pot_req <-renderValueBox({
   potencia <- format(round(resultado, 2), big.mark = ".", decimal.mark = ",")
   
   # 4. Renderizar la tarjeta
-  return(valueBox(
-    value = paste0(total_fmt, " kW"),
-    #value = format(paste0(total_fmt, " kWh"), big.mark = "."), # Formato con separador de miles
-    subtitle = "Potencia diaria requerida",
-    icon = icon("users"),
-    color = "green"
-  ))
-})
-# 2.4. Emisiones
-# 2.4.1. Preparar tabla emisiones
-kmSubDataSet <- reactive({
-  # Activa reactividad previa 
-  req(poligonos_filtrados())
-  ids_presentes <- poligonos_filtrados()$id
-  ## Filtra en rutas y almacena en rutasSubDataset
-  datos_filtrados <-rutasv2R1 %>%filter(Id_Hexagono %in% ids_presentes)
-  # Filtro por tipo de ruta
-  if (!is.null(input$filtro_tipo_ruta_clus) && !"Todos" %in% input$filtro_tipo_ruta_clus) {
-    datos_filtrados <- datos_filtrados %>% 
-      filter(SR_Tip_Ruta %in% input$filtro_tipo_ruta_clus)
-  }
+  bslib::value_box(
+    title = "Energía a utilizar al día",
+    value = paste0(total_fmt, " kWh"),
+    showcase = bsicons::bs_icon("lightning-charge-fill"),
+    theme = "bg-gradient-indigo-purple"
+  )
   
-  # Filtro por tipo de vehículo
-  if (!is.null(input$filtro_tipo_veh_clus) && !"Todos" %in% input$filtro_tipo_veh_clus) {
-    datos_filtrados <- datos_filtrados %>% 
-      filter(SR_Veh_Aj_2 %in% input$filtro_tipo_veh_clus)
-  }
-  
-  return(datos_filtrados)
 })
-
-
-#plotlyOutput("CL_emisiones_evitadas_plot", height = "450px"),
-#DTOutput("CL_emisiones_evitadas"),
 
 }
 
