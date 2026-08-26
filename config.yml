@@ -24,3 +24,55 @@ default:
     
   meta_pcbe:
     beneficiarios: 13147
+    
+  emisiones:
+    BUS: 
+      cO: 1.89
+      VOC: 0.11
+      NOX: 12.05
+      SOX: 0.02
+      PM25: 0.14
+      PM10: 0.2
+      CO2EQ: 859.21
+    BUSETA:
+      CO: 1.39
+      VOC: 0.08
+      NOX: 8.61
+      SOX: 0.01
+      PM25: 0.12
+      PM10: 0.18
+      CO2EQ: 571.84
+    MICROBUS:
+      CO: 0.32
+      VOC: 0.08
+      NOX: 2.99
+      SOX: 0
+      PM25: 0.05
+      PM10: 0.05
+      CO2EQ: 337.94
+    CAMIONETA:
+      CO: 1.07
+      VOC: 0.17 
+      NOX: 0.4
+      SOX: 0.01
+      PM25: 0.01
+      PM10: 0.02
+      CO2EQ: 265.44
+    VAN:
+      CO: 0.32
+      VOC: 0.08
+      NOX: 2.99
+      SOX: 0
+      PM25: 0.05
+      PM10: 0.05
+      CO2EQ: 337.94
+  factor_exp:
+    semana_esco: 40
+    semana_gral: 52
+  
+    
+      
+      
+      
+  
+    
