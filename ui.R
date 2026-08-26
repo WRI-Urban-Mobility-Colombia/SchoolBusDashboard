@@ -544,18 +544,21 @@ ui <- dashboardPage(
             solidHeader = TRUE,
             collapsible = TRUE,
             collapsed = TRUE,
-            h5(em("Emisiones escolares expandidas al calendario escolar, km adicionales a 52 semanas")),
+            selectInput(
+              inputId = 'filtro_t_emision',
+              label = 'Seleccione los contaminantes',
+              choices = c("CO", "VOC", "NOX", "SOX", "PM25", "PM10", "CO2EQ"),
+              selected = c("CO", "VOC", "NOX", "SOX", "PM25", "PM10", "CO2EQ"), # Selecciona todos por defecto
+              multiple = TRUE
+            ),
+            
+            h4(em("Emisiones evitadas por el proyecto al año")),
             plotlyOutput("CL_emisiones_plot", height = "350px"),
-            h5(em("Tabla de datos")),
+            h4(em("Kilómetros anuales")),
+            DTOutput("CL_Km_ano_table"),
+            h4(em("Contaminantes anuales (Toneladas)")),
             DTOutput("CL_emisiones_table")
-          )
-          #h5("Consumo energetico semanal en Kwh"),
-          
-          #h4("Estimación de infraestructura de carga"),
-          #h5("Dinámica de operación de la zona")
-          #DTOutput("CL_tabla_horaria"),
-          
-          
+            )
         ),
         box(
           actionButton(
@@ -843,9 +846,9 @@ server <- function(input, output, session) {
       sum(rutas_filtradas$disRutaSem, na.rm = TRUE)/1000
     } else { 0 }
     
-    ben_txt   <- format(total_ben, big.mark = ",")
-    rutas_txt <- format(total_rutas, big.mark = ",")
-    km_txt    <- format(round(total_km, 0), big.mark = ",")
+    ben_txt   <- format(total_ben, big.mark = ".")
+    rutas_txt <- format(total_rutas, big.mark = ".")
+    km_txt    <- format(round(total_km, 0), big.mark = ".")
     
     valor_resumen <- paste(ben_txt, " Beneficiarios |", rutas_txt, " Rutas |", km_txt, " Km")
     
@@ -1004,7 +1007,7 @@ output$tabla_resumen_km <- renderDT({
     ),
     rownames = FALSE
   ) %>% 
-    formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
+    formatRound(columns = 2:ncol(tabla_resumen), digits = 2, interval = 3, mark = ".", dec.mark = ",")
 })
 ## 2.3.1.2. Pivot table Cantidad de rutas
 output$CL_tabla_rutas <- renderDT({
@@ -1044,7 +1047,8 @@ output$CL_tabla_rutas <- renderDT({
       )
     ),
     rownames = FALSE
-  )
+  ) %>%
+    formatRound(columns = 2:ncol(tabla_resumen), digits = 0, interval = 3, mark = ".")
 })
 ## 2.3.1.3. Pivot table Cantidad de vehículos
 output$CL_tabla_veh <- renderDT({
@@ -1097,7 +1101,8 @@ output$CL_tabla_veh <- renderDT({
       )
     ),
     rownames = FALSE
-  )
+  ) %>%
+    formatRound(columns = 2:ncol(tabla_resumen),interval = 3, mark = ".", dec.mark = ",")
 })
 ## 2.3.1.3. Pivot table Cantidad de vehículos (Solo datos)
 CL_tabla_veh_data <- reactive({
@@ -1140,12 +1145,12 @@ CL_tabla_veh_data <- reactive({
 ## 2.3.1.4. Pivot table Cantidad de horas a la semana
 output$CL_tabla_horas <- renderDT({
   req(rutasSubDataset())
-  print(rutasSubDataset)
+  
   # Si el dataset resultante no tiene filas, muestra una tabla vacía sin error
   if (nrow(rutasSubDataset()) == 0) {
     return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
   }
-  print(rutasSubDataset)
+  
   tabla_resumen <- rutasSubDataset() %>%
     sf::st_drop_geometry() %>%
     group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
@@ -1177,7 +1182,9 @@ output$CL_tabla_horas <- renderDT({
     ),
     rownames = FALSE
   ) %>% 
-    formatRound(columns = 2:ncol(tabla_resumen), digits = 2)
+    formatRound(columns = 2:ncol(tabla_resumen), digits = 2, interval = 3, mark = ".", dec.mark = ",")
+      
+  
 })
 ## 2.3.1.1. Calculo beneficiarios
 
@@ -1616,15 +1623,19 @@ output$CL_pot_req <-renderUI({
   ))
 })
 ##2.4. Emisiones
-emisionesSubDataset <- reactive({
+CL_KmSubdataset <- reactive({
   datos <- req(rutasSubDataset())
   req(datos, nrow(datos) > 0)
+  
+  fac_esco <- dplyr::coalesce(CFG$factor_exp$semana_esco, 40)
+  fac_gral <- dplyr::coalesce(CFG$factor_exp$semana_gral, 52)
+  
   tabla_Km <- datos %>%
     # Eliminar geometría si es un objeto sf/spatial
     sf::st_drop_geometry() %>%
     group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
     summarise(
-      Total_disRutaSem = sum(disRutaSem/1000, na.rm = TRUE),
+      Total_disRutaSem = sum(disRutaSem / 1000, na.rm = TRUE),
       .groups = "drop"
     ) %>%
     # Pivotear para tener Tipos de Ruta en columnas y Vehículos en filas
@@ -1652,20 +1663,169 @@ emisionesSubDataset <- reactive({
       left_join(tabla_adicional, by = "Tipo de Vehículo", suffix = c("", "_extra")) %>%
       mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
   }
-
+  
+  # TOTALIZACIÓN, SELECCIÓN DE COLUMNAS Y REDONDEO A ENTERO
+  tabla_Km <- tabla_Km %>%
+    rowwise() %>%
+    mutate(
+      # Suma las columnas originales (numéricas que NO terminan en _extra)
+      Km_escolares = sum(c_across(where(is.numeric) & !ends_with("_extra")), na.rm = TRUE),
+      # Suma las columnas que terminan en _extra (si existen)
+      Km_Extras = if (any(endsWith(names(.), "_extra"))) {
+        sum(c_across(ends_with("_extra")), na.rm = TRUE)
+      } else {
+        0
+      }
+    ) %>%
+    ungroup() %>%
+    # Seleccionar únicamente la columna clave y los totales calculados
+    select(`Tipo de Vehículo`, Km_escolares, Km_Extras) %>%
+    # Redondear a números enteros conservando tipo numérico (dbl/int)
+    mutate(across(where(is.numeric), ~ round(.x, 0)))
+    ## Calculo emisiones directas.
+    ## KM escolares expandidos a 40 semanas, 
+  tabla_Km <- tabla_Km %>%
+    mutate(
+      Km_escolares = Km_escolares * fac_esco,
+      Km_Extras    = Km_Extras * fac_gral,
+      Km_totales   = Km_escolares + Km_Extras
+    )
   return(tabla_Km)
+  
 })
-
+emisionesSubDataset <- reactive({
+  tabla_Km <-req(CL_KmSubdataset())
+  ## Cargar factores de emision
+  emisiones_yaml <- CFG$emisiones
+  ## Transformación a emisiones 
+  tabla_emisiones <- emisiones_yaml %>%
+    # Convertir la lista YAML de emisiones a una tabla (tibble)
+    dplyr::bind_rows(.id = "Tipo de Vehículo") %>%
+    # Homogeneizar los nombres de contaminantes a mayúsculas por si acaso (ej. cO -> CO)
+    rename_with(~ toupper(.x), -`Tipo de Vehículo`) %>%
+    # Unir con los kilometrajes calculados anteriormente
+    pivot_longer(
+      cols = -`Tipo de Vehículo`, 
+      names_to = "Contaminante", 
+      values_to = "Factor"
+    ) %>%
+    inner_join(tabla_Km, by = "Tipo de Vehículo") %>%
+    # Calcular emisiones por categoría y totalizar dividiendo por 1.000.000
+    mutate(
+      Emisiones_Escolar = (Km_escolares * Factor) / 1000000,
+      Emisiones_Extra   = (Km_Extras * Factor) / 1000000,
+      Emisiones_Total   = Emisiones_Escolar + Emisiones_Extra
+    ) %>%
+    # Totalizar por tipo de contaminante (sumando todos los vehículos)
+    group_by(Contaminante) %>%
+    summarise(
+      Emisiones_Escolar = sum(Emisiones_Escolar, na.rm = TRUE),
+      Emisiones_Extra   = sum(Emisiones_Extra, na.rm = TRUE),
+      Emisiones_Total   = sum(Emisiones_Total, na.rm = TRUE),
+      .groups = "drop"
+    )
+  print("Tabla emisiones")
+  print(tabla_emisiones)
+  return(tabla_emisiones)
+  
+})
 
 output$CL_emisiones_plot <- renderPlotly({
   data <- req(emisionesSubDataset())
-  print("Tabla entrando al render de emisiones")
-  print(data)
-  plot_ly(data, x = ~1, y = ~1)
+  contaminantes_sel <- req(input$filtro_t_emision)
+  
+  # Filtrar la tabla de datos según los contaminantes seleccionados
+  data_filtrada <- data %>%
+    mutate(
+      Contaminante = toupper(as.character(Contaminante)),
+      Emisiones_Escolar = ifelse(is.na(Emisiones_Escolar), 0, Emisiones_Escolar),
+      Emisiones_Extra   = ifelse(is.na(Emisiones_Extra), 0, Emisiones_Extra)
+    ) %>%
+    filter(Contaminante %in% toupper(contaminantes_sel)) %>%
+    # Asegurar que el eje X se ordene correctamente como categoría
+    mutate(Contaminante = factor(Contaminante, levels = toupper(contaminantes_sel)))
+  
+  # Verificación en consola (puedes borrar estas 2 líneas después)
+  print("Filas tras filtrar:")
+  print(data_filtrada)
+  
+  # Si el usuario desmarca todos los contaminantes, evitar gráfica vacía
+  req(nrow(data_filtrada) > 0)
+  
+  plot_ly(
+    data = data_filtrada, 
+    x = ~Contaminante, 
+    y = ~Emisiones_Escolar, 
+    name = 'Escolar', 
+    type = 'bar',
+    marker = list(color = '#1f77b4')
+  ) %>%
+    add_trace(
+      y = ~Emisiones_Extra, 
+      name = 'Extra', 
+      marker = list(color = '#ff7f0e')
+    ) %>%
+    layout(
+      separators = ",.",
+      barmode = 'stack',
+      xaxis = list(title = 'Contaminante', type = 'category'),
+      yaxis = list(title = 'Emisiones evitadas (Toneladas)',
+                   tickformat = ',.1f'),
+      legend = list(title = list(text = 'Tipo de Emisión')),
+      hovermode = 'x unified'
+    )
+})
+output$CL_Km_ano_table <- renderDT({
+  data <- req(CL_KmSubdataset())
+  datatable(data,
+            extensions = 'Buttons',
+            options = list(
+              pageLength = 7,
+              dom = 'Bfrtip',
+              buttons = list(
+                list(
+                  extend = 'csv',
+                  filename = 'km_anuales',
+                  text = 'Descargar CSV',
+                  fieldSeparator = ';'
+                )
+              )
+            ),
+            rownames = FALSE,
+            )%>%
+    formatRound(
+      columns = 2:ncol(data), 
+      digits = 2, 
+      interval = 3, 
+      mark = ".", 
+      dec.mark = ","
+    )
 })
 output$CL_emisiones_table <- renderDT({
   data <- req(emisionesSubDataset())
-  datatable(data, options = list(pageLength = 5))
+  datatable(data,
+            extensions = 'Buttons',
+            options = list(
+              pageLength = 7,
+              dom = 'Bfrtip',
+              buttons = list(
+                list(
+                  extend = 'csv',
+                  filename = 'Emisiones_evitadas_año',
+                  text = 'Descargar CSV',
+                  fieldSeparator = ';'
+                )
+              )
+            ),
+            rownames = FALSE,
+  )%>%
+    formatRound(
+      columns = 2:ncol(data), 
+      digits = 2, 
+      interval = 3, 
+      mark = ".", 
+      dec.mark = ","
+    )
 })
 
 
