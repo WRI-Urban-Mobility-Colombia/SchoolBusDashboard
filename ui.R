@@ -390,6 +390,16 @@ ui <- dashboardPage(
           solidHeader = TRUE,
           collapsible = TRUE,
           collapsed = TRUE,
+          # Listado de rutas
+          box(
+            width = 12,
+            title = "Rutas que componen la propuesta",
+            status = "success",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            collapsed = TRUE,
+            DTOutput("CL_tabla_rutas_detalle")
+          ),
           # Horas contratadas a la semana
           box(
             width = 12,
@@ -543,8 +553,8 @@ ui <- dashboardPage(
             ),
             column(
               width = 4,
-              h4(em("Cargadores requeridos"))
-              ## Cargar Output con dato de cargadores
+              h4(em("Cargadores requeridos")),
+              uiOutput("CL_cargadores_req"),
             )
           ),
           box(
@@ -1199,7 +1209,44 @@ CL_tabla_veh_data <- reactive({
   
   return(tabla_resumen)
 })
+## 2.3.1.3.9. Listado reporte de rutas
+output$CL_tabla_rutas_detalle <- renderDT({
+  data <- req(rutasSubDataset())
+  print(names(rutasSubDataset()))
+  datos <-as.data.frame(data) %>%
+    sf::st_drop_geometry()%>%
+    dplyr::select(
+      CodigoRuta,
+      'Segmento' = SR_Segmento_Geografico,
+      'Tipo Ruta' = 17,
+      'Segmento_op' = SR_Segmento_Op,
+      'Contrato' = SR_No_Contrato,
+      'Vehículo' = 21 
+    )
+  datatable(
+    datos,
+    extensions = 'Buttons', ## Activa botones
+    options = list(
+      pageLength = 10,
+      #dom = 't',
+      scrollX = TRUE,
+      dom = 'Bfrtip',
+      buttons = list(
+        list(
+          extend = 'csv',
+          filename = 'Listado_rutas',
+          text = 'Descargar CSV',
+          fieldSeparator = ";"
+        )
+      )
+    ),
+    rownames = FALSE
+  ) 
+  #%>% 
+  #formatRound(columns = 2:ncol(datos), digits = 2, interval = 3, mark = ".", dec.mark = ",")
+})
 ## 2.3.1.4. Pivot table Cantidad de horas a la semana
+
 output$CL_tabla_horas <- renderDT({
   req(rutasSubDataset())
   
@@ -1640,9 +1687,7 @@ output$CL_cons_diario <- renderUI({
     width = NULL,
     value = format(paste0(total_fmt, " kWh"), big.mark = "."), # Formato con separador de miles
     subtitle = "Energía diaria a utilizar",
-    icon = icon("users"),
-    #icon = shiny::icon(bsicons::bs_icon("lightning-charge-fill") %>% as.character() %>% HTML()),
-    #icon = bsicons::bs_icon("lightning-charge-fill"),
+    icon = icon("bolt"),
     color = "blue"
   ))
 })
@@ -1675,9 +1720,42 @@ output$CL_pot_req <-renderUI({
     value = paste0(total_fmt, " kW"),
     #value = format(paste0(total_fmt, " kWh"), big.mark = "."), # Formato con separador de miles
     subtitle = "Potencia diaria requerida",
-    icon = icon("users"),
+    icon = icon("plug"),
     color = "green"
   ))
+})
+output$CL_cargadores_req <- renderUI({
+  consData <- req(CLConsSubDataset(), input$demanda_tipo_calculo)
+  total_energia <- consData %>%
+    dplyr::select(-dplyr::any_of("Total")) %>%
+    dplyr::select(where(is.numeric)) %>%
+    as.matrix() %>%
+    sum(na.rm = TRUE)
+  
+  # 2. Definir el divisor según el tipo de cálculo
+  divisor <- if (input$demanda_tipo_calculo == "Promedio") {
+    5
+  } else {
+    req(input$demanda_factor_slider)
+    input$demanda_factor_slider
+  }
+  
+  # 3. Dividir y formatear
+  resultado <- total_energia / divisor/input$VentanaCarga
+  total_fmt <- format(round(resultado, 2), big.mark = ".", decimal.mark = ",")
+  potencia <- round(resultado, 2)
+  cargadores <- ceiling(potencia / 150)
+  
+  # 4. Renderizar la tarjeta
+  return(valueBox(
+    width = NULL,
+    value = paste0(cargadores),
+    #value = format(paste0(total_fmt, " kWh"), big.mark = "."), # Formato con separador de miles
+    subtitle = "Con cargadores de 150 kW",
+    icon = icon("charging-station"),
+    color = "purple"
+  ))
+  
 })
 ##2.4. Emisiones
 CL_KmSubdataset <- reactive({
