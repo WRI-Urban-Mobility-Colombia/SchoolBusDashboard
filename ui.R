@@ -113,8 +113,8 @@ ui <- dashboardPage(
     sidebarMenu(
       id = "tab_seleccionada",
       
-      menuItem("Introducción", tabName = "tab_intro", icon = icon("info-circle")),
-      menuItem("Documentación", tabName = "documentacion", icon = icon("users")),
+      #menuItem("Introducción", tabName = "tab_intro", icon = icon("info-circle")),
+      #menuItem("Documentación", tabName = "documentacion", icon = icon("users")),
       menuItem("Cree sus zonas", tabName = "tab_mapa", icon = icon("binoculars")),
       menuItem("Explore zonas creadas", tabName = "tab_mapa2", icon = icon("map")),
       menuItem("Créditos", tabName = "creditos", icon = icon("users"))
@@ -469,9 +469,18 @@ ui <- dashboardPage(
           h4(em("Tabla de datos de consumo en kWh")),
           DTOutput("CL_demanda_energetica"),
           hr(),
-          h3(em("Estimación de necesidades de infraestructura")),
-          h5(em("Dinámica de las zonas (Horas de entrada/salida para estimar ventanas de carga)")),
-          plotlyOutput("CL_horas_act", height = "350px"),
+          box(
+            width = 12,
+            title = "Estimación de necesidades de infraestructura",
+            status = "success",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            collapsed = TRUE,
+            #h3(em("Estimación de necesidades de infraestructura")),
+            h5(em("Dinámica de las zonas (Horas de entrada/salida para estimar ventanas de carga)")),
+            plotlyOutput("CL_horas_act", height = "350px")
+          ),
+
           h4(em("Variables para la estimación de las necesidades de infraestructura")),
           h5(em("Seleccione el método de estimación, promedio: consumo semanal promedio o elegir el número de días de recarga")),
           radioButtons(
@@ -511,14 +520,34 @@ ui <- dashboardPage(
           h6(em("Promedio: Carga homogénea a lo largo de 5 días de la semana con el consumo promedio semanal")),
           h6(em("Factor de utilización: Factor de carga diaria respecto al consumo semanal. 1: 1 carga semanal, 0,2: 5 cargas semanales")),
           hr(),
-          
-          h4(em("Energía diaria requerida")),
-          uiOutput("CL_cons_diario"),
-          h4(em("Potencia diaria")),
-          uiOutput("CL_pot_req"),
-          h4(em("Cargadores requeridos")),
-          h4(em("Cargadores disponibles")),
-          h4(em("Porcentaje de utilización"))
+          fluidRow(
+            column(
+              width = 4,
+              h4(em("Energía diaria requerida")),
+              uiOutput("CL_cons_diario"),
+            ),
+            column(
+              width = 4,
+              h4(em("Potencia total")),
+              uiOutput("CL_pot_req"),
+            ),
+            column(
+              width = 4,
+              h4(em("Cargadores requeridos"))
+              ## Cargar Output con dato de cargadores
+            )
+          ),
+          box(
+            width = 12,
+            title = "Emisiones evitadas",
+            status = "success",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            collapsed = TRUE,
+            h5(em("Emisiones escolares expandidas al calendario escolar, km adicionales a 52 semanas")),
+            plotlyOutput("CL_emisiones_evitadas_plot", height = "450px"),
+            DTOutput("CL_emisiones_evitadas")
+          )
           #h5("Consumo energetico semanal en Kwh"),
           
           #h4("Estimación de infraestructura de carga"),
@@ -1262,7 +1291,7 @@ CLConsSubDataset <- reactive({
     # 2. Multiplicamos las columnas numéricas excluyendo la columna auxiliar 'factor_veh'
     across(
       where(is.numeric) & !matches("factor_veh"), 
-      ~ .x * (input$Kms_ad * factor_perdidas * factor_kmvac * factor_veh)
+      ~ .x * (input$Kms_ad * factor_perdidas * factor_veh)
     )
   )
     tabla_Km <- tabla_Km %>%
@@ -1524,6 +1553,7 @@ output$CL_cons_diario <- renderUI({
   
   # 1. Sumar todos los valores de las columnas numéricas de consData
   total_energia <- consData %>%
+    dplyr::select(-dplyr::any_of("Total")) %>%
     dplyr::select(where(is.numeric)) %>%
     as.matrix() %>%
     sum(na.rm = TRUE)
@@ -1541,18 +1571,22 @@ output$CL_cons_diario <- renderUI({
   total_fmt <- format(round(resultado, 2), big.mark = ".", decimal.mark = ",")
   
   # 4. Renderizar la tarjeta
-  bslib::value_box(
-    title = "Energía a utilizar al día",
-    value = paste0(total_fmt, " kWh"),
-    showcase = bsicons::bs_icon("lightning-charge-fill"),
-    theme = "bg-gradient-indigo-purple"
-  )
+  return(valueBox(
+    width = NULL,
+    value = format(paste0(total_fmt, " kWh"), big.mark = "."), # Formato con separador de miles
+    subtitle = "Energía diaria a utilizar",
+    icon = icon("users"),
+    #icon = shiny::icon(bsicons::bs_icon("lightning-charge-fill") %>% as.character() %>% HTML()),
+    #icon = bsicons::bs_icon("lightning-charge-fill"),
+    color = "blue"
+  ))
 })
 output$CL_pot_req <-renderUI({
   consData <- req(CLConsSubDataset(), input$demanda_tipo_calculo, input$VentanaCarga)
   
   # 1. Sumar todos los valores de las columnas numéricas de consData
   total_energia <- consData %>%
+    dplyr::select(-dplyr::any_of("Total")) %>%
     dplyr::select(where(is.numeric)) %>%
     as.matrix() %>%
     sum(na.rm = TRUE)
@@ -1571,14 +1605,16 @@ output$CL_pot_req <-renderUI({
   potencia <- format(round(resultado, 2), big.mark = ".", decimal.mark = ",")
   
   # 4. Renderizar la tarjeta
-  bslib::value_box(
-    title = "Energía a utilizar al día",
-    value = paste0(total_fmt, " kWh"),
-    showcase = bsicons::bs_icon("lightning-charge-fill"),
-    theme = "bg-gradient-indigo-purple"
-  )
-  
+  return(valueBox(
+    width = NULL,
+    value = paste0(total_fmt, " kW"),
+    #value = format(paste0(total_fmt, " kWh"), big.mark = "."), # Formato con separador de miles
+    subtitle = "Potencia diaria requerida",
+    icon = icon("users"),
+    color = "green"
+  ))
 })
+##2.4. Emisiones
 
 }
 
