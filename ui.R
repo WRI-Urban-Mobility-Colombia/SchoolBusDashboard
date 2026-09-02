@@ -341,7 +341,7 @@ ui <- dashboardPage(
                 inputId = "filtro_cluster",
                 label = "Seleccione la zona",
                 choices = c(sort(unique(poligonosV2$Cluster))),
-                selected = "Todos",
+                selected = NULL,
                 multiple = TRUE
               ),
               selectInput(
@@ -1000,12 +1000,18 @@ server <- function(input, output, session) {
 ## 3.2. Lógica de filtrar zonas---------------------------------------------##
 
   poligonos_filtrados <- reactive({
-    # Si se selecciona "Todos" o no hay nada seleccionado, retorna todo el dataset
-    if (is.null(input$filtro_cluster) || "Todos" %in% input$filtro_cluster) {
-      return(poligonosV2)
-    } else {
-      return(poligonosV2[poligonosV2$Cluster %in% input$filtro_cluster, ])
+    # 1. Si no hay selección (NULL o longitud 0), retorna un dataset vacío de 0 filas
+    if (is.null(input$filtro_cluster) || length(input$filtro_cluster) == 0) {
+      return(poligonosV2[0, ])
     }
+    
+    # 2. Si seleccionó "Todos", retorna la totalidad de los polígonos
+    if ("Todos" %in% input$filtro_cluster) {
+      return(poligonosV2)
+    }
+    
+    # 3. Si seleccionó zonas específicas, filtra por dichas zonas
+    return(poligonosV2[poligonosV2$Cluster %in% input$filtro_cluster, ])
   })
 ##--------------------------------------------------------------------------##
 ## 3.3. Filtrar rutas por poligonos-----------------------------------------##
@@ -1326,9 +1332,13 @@ output$metaPCBE <- renderValueBox({
 output$plotly_gauge <- renderPlotly({
   data <- rutasSubDataset()
   meta <- CFG$meta_pcbe$beneficiarios
-  beneficiarios <- sum(data$SR_TotalEst, na.rm = TRUE)
-  cumplimiento <- beneficiarios/meta*100
   
+  if(is.null(data)|| nrow(data)==0){
+    cumplimiento <- 0
+  }else{
+    beneficiarios <- sum(data$SR_TotalEst, na.rm = TRUE)
+    cumplimiento <- beneficiarios/meta*100
+  }
   fig <- plot_ly(
     type = "indicator",
     mode = "gauge+number",
@@ -1337,7 +1347,7 @@ output$plotly_gauge <- renderPlotly({
     title = list(text = "Nivel de Avance", font = list(size = 16)),
     gauge = list(
       axis = list(range = list(0, 100), tickwidth = 1, tickcolor = "gray"),
-      bar = list(color = "#2b2b2b"),
+      bar = list(color = "#AD0909"),
       bgcolor = "white",
       borderwidth = 1,
       bordercolor = "gray",
