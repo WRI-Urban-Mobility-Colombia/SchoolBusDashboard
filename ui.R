@@ -1100,8 +1100,7 @@ server <- function(input, output, session) {
                 "<b>Código de la ruta: </b>", ifelse(is.na(CodigoRuta), "N/A", CodigoRuta), "<br>",
                 "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
                 "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
-                "<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
-                "<b>Distancia: </b>", dist_km
+                "<b>Distancia semanal: </b>", dist_km
               )
             ) %>%
             addLegend(
