@@ -86,6 +86,20 @@ rutasv2R1 <- rutasv2R1 %>% mutate(disHorasSem = SR_Toal_H * SR_Tot_Dias)
 
 poligonosV2$NoRutas <- sapply(poligonosV2$id, function(x) sum(rutasv2R1$id_2 == x, na.rm = TRUE))
 
+## Filtrado de colegios existentes en las rutas según SR_DaneIED vs COD_DANE
+dane_existentes <- unique(na.omit(rutasv2R1$SR_DaneIED))
+colegios_filtrados_dane <- colegios_pun %>%
+  filter(COD_DANE %in% dane_existentes)
+print("Colegios ")
+print(colegios_filtrados_dane)
+## Ícono personalizado de colegio
+colegio_icon <- makeAwesomeIcon(
+  icon        = "graduation-cap",
+  iconColor   = "white",
+  markerColor = "blue",
+  library     = "fa"
+)
+
 ##----------------------------------------------------------------------------##
 ##CSS Print
 ##----------------------------------------------------------------------------##
@@ -923,10 +937,9 @@ server <- function(input, output, session) {
 ##--------------------------------------------------------------------------##
 ## 3.1. Render mapa base de zonas-------------------------------------------##
   output$mapa_clusteres <- renderLeaflet({
-    datos <- poligonos_filtrados()
     bbox <- sf::st_bbox(poligonosV2)
     
-    leaflet(datos,
+    leaflet(poligonosV2,
             options = leafletOptions(
               minZoom = 10,
               maxZoom = 18
@@ -938,21 +951,98 @@ server <- function(input, output, session) {
         lng2 = as.numeric(bbox["xmax"]),
         lat2 = as.numeric(bbox["ymax"])
       ) %>%
-      addPolygons(
-        layerId     = ~id,
-        fillColor   = ~factpal_patios(Cluster),
-        fillOpacity = 0.5,
-        color       = "#f7f7f7",
-        weight      = 1.5,
-        group       = "Zonas hexagonales",
-        label       = ~paste("Zona:", id, "| Cluster:", Cluster)
+      addAwesomeMarkers(
+        data  = colegios_filtrados_dane,
+        icon  = colegio_icon,
+        group = "Colegios (DANE)",
+        popup = ~paste0("<b>Colegio: </b>", NOMBRE_INS)
       ) %>%
-      addLegend(
-        pal      = factpal_patios,
-        values   = ~Cluster,
-        title    = "Grupo de rutas",
-        position = "bottomright"
+      addLayersControl(
+        overlayGroups = c("Zonas hexagonales", "Rutas Clúster", "Colegios (DANE)"),
+        options       = layersControlOptions(collapsed = FALSE)
       )
+  })
+  
+  ## 3.1.b Observer optimizado para actualizar Polígonos y Rutas en Mapa de Clústeres ----##
+  observe({
+    proxy <- leafletProxy("mapa_clusteres")
+    poligonos_sub <- poligonos_filtrados()
+    
+    # 1. Limpieza de capas previas y control de leyenda
+    proxy %>% 
+      clearGroup("Zonas hexagonales") %>% 
+      clearGroup("Rutas Clúster") %>% 
+      removeControl("leyenda_rutas_clus") %>%
+      removeControl("leyenda_patios_clus")
+    
+    # 2. Dibujar Polígonos del Clúster seleccionado
+    if (nrow(poligonos_sub) > 0) {
+      proxy %>%
+        addPolygons(
+          data        = poligonos_sub,
+          layerId     = ~id,
+          fillColor   = ~factpal_patios(Cluster),
+          fillOpacity = 0.5,
+          color       = "#f7f7f7",
+          weight      = 1.5,
+          group       = "Zonas hexagonales",
+          label       = ~paste("Zona:", id, "| Cluster:", Cluster)
+        ) %>%
+        addLegend(
+          layerId  = "leyenda_patios_clus",
+          pal      = factpal_patios,
+          values   = poligonos_sub$Cluster,
+          title    = "Grupo de rutas",
+          position = "bottomright"
+        )
+    }
+    
+    # 3. Dibujar Rutas según los filtros activos
+    rutas_clus <- rutasSubDataset()
+    
+    if (!is.null(rutas_clus) && nrow(rutas_clus) > 0) {
+      var_color <- ifelse(!is.null(input$var_color_ruta_clus) && nzchar(input$var_color_ruta_clus), 
+                          input$var_color_ruta_clus, "SR_Tip_Ruta")
+      
+      if (var_color %in% names(rutas_clus)) {
+        vec_color <- rutas_clus[[var_color]]
+        valores_unicos <- sort(unique(na.omit(vec_color)))
+        
+        if (length(valores_unicos) > 0) {
+          paleta <- if (var_color == "SR_Tip_Ruta") paleta_tipo_ruta else paleta_tipo_vehiculo
+          titulo_leyenda <- if (identical(var_color, "SR_Tip_Ruta")) "Tipo de Ruta" else "Tipo de Vehículo"
+          
+          dist_km <- ifelse(
+            is.na(rutas_clus$disRutaSem), 
+            "N/A", 
+            paste0(round(rutas_clus$disRutaSem / 1000, 2), " Km")
+          )
+          
+          proxy %>%
+            addPolylines(
+              data        = rutas_clus,
+              group       = "Rutas Clúster",
+              color       = paleta(vec_color),
+              weight      = 3.5,
+              opacity     = 0.85,
+              popup       = ~paste0(
+                "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
+                "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
+                "<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
+                "<b>Distancia: </b>", dist_km
+              )
+            ) %>%
+            addLegend(
+              layerId  = "leyenda_rutas_clus",
+              position = "bottomleft",
+              pal      = paleta,
+              values   = vec_color,
+              title    = titulo_leyenda,
+              opacity  = 0.9
+            )
+        }
+      }
+    }
   })
 
 ## 3.1.b Observer para actualizar Polígonos y Rutas en Mapa de Clústeres ----##
@@ -963,6 +1053,7 @@ server <- function(input, output, session) {
     proxy %>% 
       clearGroup("Zonas hexagonales") %>% 
       clearGroup("Rutas Clúster") %>% 
+      clearGroup("Colegios (DANE)") %>% 
       clearControls()
     
     if (nrow(poligonos_sub) > 0) {
@@ -984,6 +1075,15 @@ server <- function(input, output, session) {
           position = "bottomright"
         )
     }
+    
+    # Marcadores de colegios DANE existentes
+    proxy %>%
+      addAwesomeMarkers(
+        data  = colegios_filtrados_dane,
+        icon  = colegio_icon,
+        group = "Colegios (DANE)",
+        popup = ~paste0("<b>Colegio: </b>", NOMBRE_INS)
+      )
     
     rutas_clus <- rutasSubDataset()
     
@@ -1029,6 +1129,12 @@ server <- function(input, output, session) {
         }
       }
     }
+    
+    proxy %>%
+      addLayersControl(
+        overlayGroups = c("Zonas hexagonales", "Rutas Clúster", "Colegios (DANE)"),
+        options       = layersControlOptions(collapsed = FALSE)
+      )
   })
 
 ##--------------------------------------------------------------------------##
