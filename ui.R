@@ -393,12 +393,20 @@ ui <- dashboardPage(
         ),
         box(
           width = 12,
-          title = "Parámetros operacionales de la propuesta",
+          title = "Reporte de colegios y rutas de la propuesta",
           status = "primary",
           solidHeader = TRUE,
           collapsible = TRUE,
           collapsed = TRUE,
-          
+          box(
+            width = 12,
+            title = "Datos operacionales por colegio",
+            status = "success",
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            collapsed = TRUE,
+            DTOutput("CL_tabla_colegios_detalle")
+          ),
           box(
             width = 12,
             title = "Rutas que componen la propuesta",
@@ -407,7 +415,15 @@ ui <- dashboardPage(
             collapsible = TRUE,
             collapsed = TRUE,
             DTOutput("CL_tabla_rutas_detalle")
-          ),
+          )
+        ),
+        box(
+          width = 12,
+          title = "Parámetros operacionales de la propuesta",
+          status = "primary",
+          solidHeader = TRUE,
+          collapsible = TRUE,
+          collapsed = TRUE,
           box(
             width = 12,
             title = "Horas contratadas a la semana",
@@ -665,7 +681,7 @@ server <- function(input, output, session) {
     )
     
     leaflet(poligonosV2) %>%
-      addProviderTiles(providers$CartoDB.Positron) %>%
+      addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
       addPolygons(
         data = pat_ele_buff,
         fillColor = "#4db608",
@@ -923,7 +939,27 @@ server <- function(input, output, session) {
             extend = 'csv',
             filename = '01_dist_km_semanal',
             text = 'Descargar CSV',
-            fieldSeparator = ";"
+            action = DT::JS(
+              "function (e, dt, node, config) {",
+              "  var self = this;",
+              "  var oldStart = dt.settings()[0]._iDisplayStart;",
+              "  dt.one('preXhr', function (e, s, data) {",
+              "    data.start = 0;",
+              "    data.length = -1;",
+              "  });",
+              "  dt.one('draw', function (e, settings) {",
+              "    $.fn.dataTable.ext.buttons.csvHtml5.action.call(self, e, dt, node, config);",
+              "    dt.one('preXhr', function (e, s, data) {",
+              "      data.start = oldStart;",
+              "    });",
+              "    dt.draw(false);",
+              "  });",
+              "  dt.draw();",
+              "}"
+            ),
+            fieldSeparator = ";",exportOptions = list(
+              modifier = list(page = 'all', search = 'none') # Captura todas las páginas e ignora el filtro si se requiere
+            )
           )
         )
       ),
@@ -946,7 +982,7 @@ server <- function(input, output, session) {
               minZoom = 10,
               maxZoom = 18
             )) %>%
-      addProviderTiles(providers$CartoDB.Positron) %>%
+      addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
       setMaxBounds(
         lng1 = as.numeric(bbox["xmin"]),
         lat1 = as.numeric(bbox["ymin"]),
@@ -1061,6 +1097,7 @@ server <- function(input, output, session) {
               weight      = 3.5,
               opacity     = 0.85,
               popup       = ~paste0(
+                "<b>Código de la ruta: </b>", ifelse(is.na(CodigoRuta), "N/A", CodigoRuta), "<br>",
                 "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
                 "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
                 "<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
@@ -1159,7 +1196,28 @@ server <- function(input, output, session) {
             extend = 'csv',
             filename = '01_dist_km_semanal',
             text = 'Descargar CSV',
-            fieldSeparator = ";"
+            fieldSeparator = ";",
+            action = DT::JS(
+              "function (e, dt, node, config) {",
+              "  var self = this;",
+              "  var oldStart = dt.settings()[0]._iDisplayStart;",
+              "  dt.one('preXhr', function (e, s, data) {",
+              "    data.start = 0;",
+              "    data.length = -1;",
+              "  });",
+              "  dt.one('draw', function (e, settings) {",
+              "    $.fn.dataTable.ext.buttons.csvHtml5.action.call(self, e, dt, node, config);",
+              "    dt.one('preXhr', function (e, s, data) {",
+              "      data.start = oldStart;",
+              "    });",
+              "    dt.draw(false);",
+              "  });",
+              "  dt.draw();",
+              "}"
+            ),
+            exportOptions = list(
+              modifier = list(page = 'all', search = 'none') # Captura todas las páginas e ignora el filtro si se requiere
+            )
           )
         )
       ),
@@ -1200,7 +1258,28 @@ server <- function(input, output, session) {
             extend = 'csv',
             filename = '01_conteo_rutas',
             text = 'Descargar CSV',
-            fieldSeparator = ";"
+            fieldSeparator = ";",
+            action = DT::JS(
+              "function (e, dt, node, config) {",
+              "  var self = this;",
+              "  var oldStart = dt.settings()[0]._iDisplayStart;",
+              "  dt.one('preXhr', function (e, s, data) {",
+              "    data.start = 0;",
+              "    data.length = -1;",
+              "  });",
+              "  dt.one('draw', function (e, settings) {",
+              "    $.fn.dataTable.ext.buttons.csvHtml5.action.call(self, e, dt, node, config);",
+              "    dt.one('preXhr', function (e, s, data) {",
+              "      data.start = oldStart;",
+              "    });",
+              "    dt.draw(false);",
+              "  });",
+              "  dt.draw();",
+              "}"
+            ),
+            exportOptions = list(
+              modifier = list(page = 'all', search = 'none') # Captura todas las páginas e ignora el filtro si se requiere
+            )
           )
         )
       ),
@@ -1253,7 +1332,28 @@ server <- function(input, output, session) {
             extend = 'csv',
             filename = '02_calculo_vehiculos_factor',
             text = 'Descargar CSV',
-            fieldSeparator = ";"
+            fieldSeparator = ";",
+            action = DT::JS(
+              "function (e, dt, node, config) {",
+              "  var self = this;",
+              "  var oldStart = dt.settings()[0]._iDisplayStart;",
+              "  dt.one('preXhr', function (e, s, data) {",
+              "    data.start = 0;",
+              "    data.length = -1;",
+              "  });",
+              "  dt.one('draw', function (e, settings) {",
+              "    $.fn.dataTable.ext.buttons.csvHtml5.action.call(self, e, dt, node, config);",
+              "    dt.one('preXhr', function (e, s, data) {",
+              "      data.start = oldStart;",
+              "    });",
+              "    dt.draw(false);",
+              "  });",
+              "  dt.draw();",
+              "}"
+            ),
+            exportOptions = list(
+              modifier = list(page = 'all', search = 'none') # Captura todas las páginas e ignora el filtro si se requiere
+            )
           )
         )
       ),
@@ -1328,12 +1428,117 @@ server <- function(input, output, session) {
             extend = 'csv',
             filename = 'Listado_rutas',
             text = 'Descargar CSV',
-            fieldSeparator = ";"
+            fieldSeparator = ";",
+            action = DT::JS(
+              "function (e, dt, node, config) {",
+              "  var self = this;",
+              "  var oldStart = dt.settings()[0]._iDisplayStart;",
+              "  dt.one('preXhr', function (e, s, data) {",
+              "    data.start = 0;",
+              "    data.length = -1;",
+              "  });",
+              "  dt.one('draw', function (e, settings) {",
+              "    $.fn.dataTable.ext.buttons.csvHtml5.action.call(self, e, dt, node, config);",
+              "    dt.one('preXhr', function (e, s, data) {",
+              "      data.start = oldStart;",
+              "    });",
+              "    dt.draw(false);",
+              "  });",
+              "  dt.draw();",
+              "}"
+            ),
+            exportOptions = list(
+              modifier = list(page = 'all', search = 'none') # Captura todas las páginas e ignora el filtro si se requiere
+            )
           )
         )
       ),
       rownames = FALSE
     ) 
+  })
+  ## 2.3.1.3.9. Listado reporte de rutas
+  
+  output$CL_tabla_colegios_detalle <- renderDT({
+    data <- rutasSubDataset()
+    if (is.null(data) || nrow(data) == 0) {
+      return(datatable(data.frame(Mensaje = "No hay datos disponibles")))
+    }
+    
+    datos <- data %>%
+      sf::st_drop_geometry() %>%
+      mutate(
+        SR_Veh_Aj_2_clean = toupper(trimws(SR_Veh_Aj_2)),
+        factor_veh = case_when(
+          SR_Veh_Aj_2_clean == "BUS"                    ~ 1.5,
+          SR_Veh_Aj_2_clean == "BUSETA"                 ~ 2.5,
+          SR_Veh_Aj_2_clean %in% c("MICROBÚS", "MICROBUS") ~ 1.5,
+          SR_Veh_Aj_2_clean == "VAN"                    ~ 1.0,
+          SR_Veh_Aj_2_clean == "CAMIONETA"              ~ 2.5,
+          TRUE ~ 1.0
+        )
+      ) %>%
+      group_by(SR_IED, SR_DaneIED) %>%
+      summarise(
+        `Horas Semanales` = sum(disHorasSem, na.rm = TRUE),
+        `Cantidad Rutas`  = n(), # Se mantiene el cálculo directo original
+        `Beneficiarios`   = sum(SR_TotalEst, na.rm = TRUE),
+        
+        # Cálculo exclusivo de vehículos por tipo de vehículo dentro del mismo colegio:
+        `Vehículos`       = sum(
+          tapply(factor_veh, SR_Veh_Aj_2_clean, function(f) ceiling(length(f) / f[1])),
+          na.rm = TRUE
+        ),
+        .groups = "drop"
+      ) %>%
+      rename(
+        `Colegio`     = SR_IED,
+        `Código DANE` = SR_DaneIED
+      ) %>%
+      mutate(
+        `Código DANE` = as.character(`Código DANE`)
+      )
+    
+    datatable(
+      datos,
+      extensions = 'Buttons',
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        dom = 'Bfrtip',
+        buttons = list(
+          list(
+            extend = 'csv',
+            filename = 'Listado_rutas_agrupado_colegio',
+            text = 'Descargar CSV',
+            fieldSeparator = ";",
+            action = DT::JS(
+              "function (e, dt, node, config) {",
+              "  var self = this;",
+              "  var oldStart = dt.settings()[0]._iDisplayStart;",
+              "  dt.one('preXhr', function (e, s, data) {",
+              "    data.start = 0;",
+              "    data.length = -1;",
+              "  });",
+              "  dt.one('draw', function (e, settings) {",
+              "    $.fn.dataTable.ext.buttons.csvHtml5.action.call(self, e, dt, node, config);",
+              "    dt.one('preXhr', function (e, s, data) {",
+              "      data.start = oldStart;",
+              "    });",
+              "    dt.draw(false);",
+              "  });",
+              "  dt.draw();",
+              "}"
+            ),
+            exportOptions = list(
+              modifier = list(page = 'all', search = 'none')
+            )
+          )
+        )
+      ),
+      rownames = FALSE
+    ) %>%
+      formatRound(columns = c("Horas Semanales"), digits = 2, interval = 3, mark = ".", dec.mark = ",") %>%
+      formatRound(columns = c("Cantidad Rutas", "Beneficiarios", "Vehículos"), digits = 0, interval = 3, mark = ".")
   })
 
   ## 2.3.1.4. Pivot table Cantidad de horas a la semana
@@ -1368,7 +1573,28 @@ server <- function(input, output, session) {
             extend = 'csv',
             filename = '04_Horas_contratadas',
             text = 'Descargar CSV',
-            fieldSeparator = ";"
+            fieldSeparator = ";",
+            action = DT::JS(
+              "function (e, dt, node, config) {",
+              "  var self = this;",
+              "  var oldStart = dt.settings()[0]._iDisplayStart;",
+              "  dt.one('preXhr', function (e, s, data) {",
+              "    data.start = 0;",
+              "    data.length = -1;",
+              "  });",
+              "  dt.one('draw', function (e, settings) {",
+              "    $.fn.dataTable.ext.buttons.csvHtml5.action.call(self, e, dt, node, config);",
+              "    dt.one('preXhr', function (e, s, data) {",
+              "      data.start = oldStart;",
+              "    });",
+              "    dt.draw(false);",
+              "  });",
+              "  dt.draw();",
+              "}"
+            ),
+            exportOptions = list(
+              modifier = list(page = 'all', search = 'none') # Captura todas las páginas e ignora el filtro si se requiere
+            )
           )
         )
       ),
