@@ -2076,13 +2076,6 @@ server <- function(input, output, session) {
       formatRound(columns = c("Emisiones_Escolar", "Emisiones_Extra", "Emisiones_Total"), digits = 2)
   })
   
-}
-
-shinyApp(ui = ui, server = server)
-##----------------------------------------------------------------------------##
-## Servidor
-##----------------------------------------------------------------------------##
-server <- function(input, output, session) {
 
 ##--------------------------------------------------------------------------##
 ## 2. Mapa creación de proyectos
