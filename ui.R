@@ -577,23 +577,33 @@ ui <- dashboardPage(
           ),
           box(
             width = 12,
-            title = "Emisiones evitadas",
             status = "success",
             solidHeader = TRUE,
             collapsible = TRUE,
             collapsed = TRUE,
-            selectInput(
-              inputId = 'filtro_t_emision',
-              label = 'Seleccione los contaminantes',
-              choices = c("CO", "VOC", "NOX", "SOX", "PM25", "PM10", "CO2EQ"),
-              selected = c("CO", "VOC", "NOX", "SOX", "PM25", "PM10", "CO2EQ"),
-              multiple = TRUE
-            ),
-            
-            h4(em("Emisiones evitadas por el proyecto al año")),
-            plotlyOutput("CL_emisiones_plot", height = "350px"),
-            h4(em("Kilómetros anuales")),
+            title = "Impacto ambiental del proyecto",
+            h4(em("Kilómetros anuales para estimación")),
             DTOutput("CL_Km_ano_table"),
+            hr(),
+            fluidRow(
+              column(
+                width = 8,
+                h3(em("Emisiones evitadas por contaminante al año")),
+                plotlyOutput("CL_emisiones_plot", height = "350px"),
+                selectInput(
+                  inputId = 'filtro_t_emision',
+                  label = 'Seleccione los contaminantes',
+                  choices = c("CO", "VOC", "NOX", "SOX", "PM25", "PM10"),
+                  selected = c("CO", "VOC", "NOX", "SOX", "PM25", "PM10"),
+                  multiple = TRUE
+                )
+              ),
+              column(
+                width = 4,
+                h3(em("Dióxido de carbono equivalente evitado al año")),
+                plotlyOutput("CL_emisionesCO2eq", height = "350px"),
+              )
+            ),
             h4(em("Contaminantes anuales (Toneladas)")),
             DTOutput("CL_emisiones_table")
           )
@@ -2083,6 +2093,82 @@ server <- function(input, output, session) {
     return(tabla_emisiones)
   })
 
+  output$CL_emisiones_plotOLD <- renderPlotly({
+    data <- req(emisionesSubDataset())
+    contaminantes_sel <- req(input$filtro_t_emision)
+    
+    data_filtrada <- data %>%
+      mutate(
+        Contaminante = toupper(as.character(Contaminante)),
+        Emisiones_Escolar = ifelse(is.na(Emisiones_Escolar), 0, Emisiones_Escolar),
+        Emisiones_Extra   = ifelse(is.na(Emisiones_Extra), 0, Emisiones_Extra)
+      ) %>%
+      filter(Contaminante %in% toupper(contaminantes_sel)) %>%
+      mutate(Contaminante = factor(Contaminante, levels = toupper(contaminantes_sel)))
+    
+    req(nrow(data_filtrada) > 0)
+    
+    plot_ly(
+      data = data_filtrada, 
+      x = ~Contaminante, 
+      y = ~Emisiones_Escolar, 
+      name = 'Escolar', 
+      type = 'bar',
+      marker = list(color = '#1f77b4')
+    ) %>%
+      add_trace(
+        y = ~Emisiones_Extra, 
+        name = 'Extra', 
+        marker = list(color = '#ff7f0e')
+      ) %>%
+      layout(
+        separators = ",.",
+        barmode = 'stack',
+        xaxis = list(title = 'Contaminante', type = 'category'),
+        yaxis = list(title = 'Emisiones evitadas (Toneladas)', tickformat = ',.1f'),
+        legend = list(title = list(text = 'Tipo de Emisión')),
+        hovermode = 'x unified'
+      )
+  })
+  
+  output$CL_emisionesCO2eq <- renderPlotly({
+    data <- req(emisionesSubDataset())
+    contaminantes_sel <- "CO2EQ"
+    
+    data_filtrada <- data %>%
+      mutate(
+        Contaminante = toupper(as.character(Contaminante)),
+        Emisiones_Escolar = ifelse(is.na(Emisiones_Escolar), 0, Emisiones_Escolar),
+        Emisiones_Extra   = ifelse(is.na(Emisiones_Extra), 0, Emisiones_Extra)
+      ) %>%
+      filter(Contaminante %in% toupper(contaminantes_sel)) %>%
+      mutate(Contaminante = factor(Contaminante, levels = toupper(contaminantes_sel)))
+    
+    req(nrow(data_filtrada) > 0)
+    
+    plot_ly(
+      data = data_filtrada, 
+      x = ~Contaminante, 
+      y = ~Emisiones_Escolar, 
+      name = 'Escolar', 
+      type = 'bar',
+      marker = list(color = '#1f77b4')
+    ) %>%
+      add_trace(
+        y = ~Emisiones_Extra, 
+        name = 'Extra', 
+        marker = list(color = '#ff7f0e')
+      ) %>%
+      layout(
+        separators = ",.",
+        barmode = 'stack',
+        xaxis = list(title = 'Contaminante', type = 'category'),
+        yaxis = list(title = 'Emisiones evitadas (Toneladas)', tickformat = ',.1f'),
+        legend = list(title = list(text = 'Tipo de Emisión')),
+        hovermode = 'x unified'
+      )
+  })
+  
   output$CL_emisiones_plot <- renderPlotly({
     data <- req(emisionesSubDataset())
     contaminantes_sel <- req(input$filtro_t_emision)
@@ -2120,6 +2206,7 @@ server <- function(input, output, session) {
         hovermode = 'x unified'
       )
   })
+  
 
   output$CL_Km_ano_table <- renderDT({
     data <- req(CL_KmSubdataset())
