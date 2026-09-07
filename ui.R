@@ -34,7 +34,7 @@ pat_ele_punt <- readRDS("Assets/RDS/P_Elec_punt.rds")
 punt_ad_buff <- readRDS("Assets/RDS/P_Ad_buff.rds")
 punt_ad_punt <- readRDS("Assets/RDS/P_Ad_punt.rds")
 colegios_pun <- readRDS("Assets/RDS/colegios.rds")
-llaves_rutas <- read.csv2("Assets/csv/260901_Rutas_colegio3.csv")
+#llaves_rutas <- read.csv2("Assets/csv/260901_Rutas_colegio3.csv")
 
 ## Preprocesamiento de datos
 rutasv2R1 <- rutasv2 %>%
@@ -103,7 +103,7 @@ ui <- dashboardPage(
   
   header = dashboardHeader(
     title = tagList(
-      span(class = "logo-lg", style = "font-weight: 800; letter-spacing: 0.5px; color: #ffffff;", "WRI | MOBILITY"),
+      span(class = "logo-lg", style = "font-weight: 800; letter-spacing: 0.5px; color: #ffffff;", "Electrificación de rutas escolares"),
       span(class = "logo-mini", style = "color: #ffffff; font-weight: 800;", "W")
     ),
     rightUi = userOutput("skin_dropdown")
@@ -115,9 +115,9 @@ ui <- dashboardPage(
     collapsed = FALSE,
     sidebarMenu(
       id = "tab_seleccionada",
-      menuItem("Diseño de Zonas", tabName = "tab_mapa", icon = icon("drafting-compass")),
-      menuItem("Exploración & Impacto", tabName = "tab_mapa2", icon = icon("globe-americas")),
-      menuItem("Documentación", tabName = "documentacion", icon = icon("book-open")),
+      menuItem("Diseñe el proyecto", tabName = "tab_mapa", icon = icon("drafting-compass")),
+      menuItem("Explore las propuestas", tabName = "tab_mapa2", icon = icon("globe-americas")),
+      menuItem("FAQ", tabName = "documentacion", icon = icon("book-open")),
       menuItem("Créditos", tabName = "creditos", icon = icon("award"))
     )
   ),
@@ -309,7 +309,9 @@ ui <- dashboardPage(
           style = "margin-bottom: 12px; display: flex; align-items: center;",
           column(
             width = 8,
-            h2("Diseño de Zonas e Impacto", style = "margin: 0; font-weight: 800; letter-spacing: -0.5px; color: #0f172a;")
+            h2("Plantee su proyecto", style = "margin: 0; font-weight: 800; letter-spacing: -0.5px; color: #0f172a;"),
+            h6(em("Elija los hexágonos para crear su proyecto, abajo verá los resultados agregados para los hexágonos seleccionados",
+                  style = "margin-top:30; font-weight:800; color:#0284c7; letter-spacing: 0.5px;"))
           ),
           column(
             width = 4,
@@ -547,7 +549,9 @@ ui <- dashboardPage(
           style = "margin-bottom: 12px; display: flex; align-items: center;",
           column(
             width = 8,
-            h2("Exploración de Zonas e Impacto", style = "margin: 0; font-weight: 800; letter-spacing: -0.5px; color: #0f172a;")
+            h2("Exploración de propuestas", style = "margin: 0; font-weight: 800; letter-spacing: -0.5px; color: #0f172a;"),
+            h6(em("Explore las zonas creadas para ver sus características",
+                  style = "margin-top:30; font-weight:800; color:#0284c7; letter-spacing: 0.5px;"))
           ),
           column(
             width = 4,
