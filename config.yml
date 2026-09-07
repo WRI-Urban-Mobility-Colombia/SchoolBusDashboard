@@ -27,45 +27,45 @@ default:
     
   emisiones:
     BUS: 
-      CO: 1.89
-      VOC: 0.11
-      NOX: 12.05
-      SOX: 0.02
-      PM25: 0.14
-      PM10: 0.2
-      CO2EQ: 859.21
+      CO: 1.555
+      VOC: 0.091
+      NOX: 9.603
+      SOX: 0.014
+      PM25: 0.108
+      PM10: 0.154
+      CO2EQ: 858.1
     BUSETA:
-      CO: 1.39
-      VOC: 0.08
-      NOX: 8.61
-      SOX: 0.01
-      PM25: 0.12
-      PM10: 0.18
-      CO2EQ: 571.84
+      CO: 0.992
+      VOC: 0.057
+      NOX: 5.775
+      SOX: 0.010
+      PM25: 0.075
+      PM10: 0.110
+      CO2EQ: 571.6
     MICROBUS:
-      CO: 0.32
-      VOC: 0.08
-      NOX: 2.99
-      SOX: 0
-      PM25: 0.05
-      PM10: 0.05
-      CO2EQ: 337.94
+      CO: 0.309
+      VOC: 0.057
+      NOX: 2.327
+      SOX: 0.004
+      PM25: 0.034
+      PM10: 0.034
+      CO2EQ: 339.7
     CAMIONETA:
-      CO: 1.07
-      VOC: 0.17 
-      NOX: 0.4
-      SOX: 0.01
-      PM25: 0.01
-      PM10: 0.02
-      CO2EQ: 265.44
+      CO: 0.820
+      VOC: 0.127 
+      NOX: 0.309
+      SOX: 0.013
+      PM25: 0.009
+      PM10: 0.011
+      CO2EQ: 274.0
     VAN:
-      CO: 0.32
-      VOC: 0.08
-      NOX: 2.99
-      SOX: 0
-      PM25: 0.05
-      PM10: 0.05
-      CO2EQ: 337.94
+      CO: 0.309
+      VOC: 0.057
+      NOX: 2.327
+      SOX: 0.004
+      PM25: 0.034
+      PM10: 0.034
+      CO2EQ: 339.7
   factor_exp:
     semana_esco: 40
     semana_gral: 52
