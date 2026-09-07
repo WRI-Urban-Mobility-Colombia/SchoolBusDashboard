@@ -99,11 +99,11 @@ js_csv_btn <- function(filename) {
 ## Definición de Interfaz de Usuario (UI)
 ##----------------------------------------------------------------------------##
 ui <- dashboardPage(
-  title = "Dashboard para la electrificación de rutas escolares de Bogotá D.C.",
+  title = "Electrificación de rutas escolares de Bogotá D.C.-Dashboard de planeación de proyectos",
   
   header = dashboardHeader(
     title = tagList(
-      span(class = "logo-lg", style = "font-weight: 800; letter-spacing: 0.5px; color: #ffffff;", "Electrificación de rutas escolares"),
+      span(class = "logo-lg", style = "font-weight: 800; letter-spacing: 0.5px; color: #ffffff;", "Planeador Rutas"),
       span(class = "logo-mini", style = "color: #ffffff; font-weight: 800;", "W")
     ),
     rightUi = userOutput("skin_dropdown")
@@ -115,10 +115,10 @@ ui <- dashboardPage(
     collapsed = FALSE,
     sidebarMenu(
       id = "tab_seleccionada",
-      menuItem("Diseñe el proyecto", tabName = "tab_mapa", icon = icon("drafting-compass")),
       menuItem("Explore las propuestas", tabName = "tab_mapa2", icon = icon("globe-americas")),
-      menuItem("FAQ", tabName = "documentacion", icon = icon("book-open")),
-      menuItem("Créditos", tabName = "creditos", icon = icon("award"))
+      menuItem("Diseñe el proyecto", tabName = "tab_mapa", icon = icon("drafting-compass")),
+      menuItem("Guías y créditos", tabName = "documentacion", icon = icon("book-open"))
+      #menuItem("Créditos", tabName = "creditos", icon = icon("award"))
     )
   ),
   
@@ -437,6 +437,7 @@ ui <- dashboardPage(
                   DTOutput("T1_tabla_horas"),
                   hr(),
                   h4(em("Kilómetros semanales", style = "font-weight:700; color:#0f172a;")),
+                  h6(em("Incluyen 26% en kilómetros en vacío")),
                   DTOutput("T1_tabla_resumen_km")
                 ),
                 box(
@@ -511,12 +512,13 @@ ui <- dashboardPage(
               title = " Impacto Ambiental",
               br(),
               h4(em("Kilómetros Anuales Proyectados", style = "font-weight:700; color:#0f172a;")),
+              h6(em("Kilómetros proyectados con las variables definidas en la pestaña 'Energía y recarga', por defecto, son solo kilómetros escolares y 26% de kilómetros en vacío")),
               DTOutput("T1_Km_ano_table"),
               hr(),
               fluidRow(
                 column(
                   width = 7,
-                  h4("Emisiones Evitadas por Contaminante (Ton/año)", style = "color:#16a34a; font-weight:700;"),
+                  h4("Emisiones Evitadas por Contaminante (Kg/año)", style = "color:#16a34a; font-weight:700;"),
                   plotlyOutput("T1_emisiones_plot", height = "280px"),
                   selectInput(
                     inputId  = 'T1_filtro_t_emision',
@@ -528,11 +530,13 @@ ui <- dashboardPage(
                 ),
                 column(
                   width = 5,
-                  h4("Descarbonización CO2eq", style = "color:#16a34a; font-weight:700;"),
+                  h4("Descarbonización: CO2eq evitado (Toneladas/año)", style = "color:#16a34a; font-weight:700;"),
                   plotlyOutput("T1_emisionesCO2eq", height = "280px")
                 )
               ),
               br(),
+              hr(),
+              h4("Resumen de emisiones evitadas por el proyecto (Toneladas/año)", style = "color:#16a34a; font-weight:700;"),
               DTOutput("T1_emisiones_table")
             )
           )
@@ -680,6 +684,7 @@ ui <- dashboardPage(
                   DTOutput("CL_tabla_horas"),
                   hr(),
                   h4(em("Kilómetros semanales", style = "font-weight:700; color:#0f172a;")),
+                  h6(em("Incluyen 26% en kilómetros en vacío")),
                   DTOutput("tabla_resumen_km")
                 ),
                 box(
@@ -754,12 +759,13 @@ ui <- dashboardPage(
               title = " Impacto Ambiental",
               br(),
               h4(em("Kilómetros Anuales Proyectados", style = "font-weight:700; color:#0f172a;")),
+              h6(em("Kilómetros proyectados con las variables definidas en la pestaña 'Energía y recarga', por defecto, son solo kilómetros escolares y 26% de kilómetros en vacío")),
               DTOutput("CL_Km_ano_table"),
               hr(),
               fluidRow(
                 column(
                   width = 7,
-                  h4("Emisiones Evitadas por Contaminante (Ton/año)", style = "color:#16a34a; font-weight:700;"),
+                  h4("Emisiones Evitadas por Contaminante (Kg/año)", style = "color:#16a34a; font-weight:700;"),
                   plotlyOutput("CL_emisiones_plot", height = "280px"),
                   selectInput(
                     inputId  = 'filtro_t_emision',
@@ -771,11 +777,13 @@ ui <- dashboardPage(
                 ),
                 column(
                   width = 5,
-                  h4("Descarbonización CO2eq", style = "color:#16a34a; font-weight:700;"),
+                  h4("Descarbonización: CO2eq evitado (Toneladas/Año)", style = "color:#16a34a; font-weight:700;"),
                   plotlyOutput("CL_emisionesCO2eq", height = "280px")
                 )
               ),
               br(),
+              hr(),
+              h4("Resumen de emisiones evitadas por el proyecto (Toneladas/año)", style = "color:#16a34a; font-weight:700;"),
               DTOutput("CL_emisiones_table")
             )
           )
@@ -789,8 +797,18 @@ ui <- dashboardPage(
         tabName = "documentacion",
         div(
           class = "analytics-sheet-light",
-          h3("Documentación del Sistema", style = "font-weight:800; color:#0f172a; margin-top:0;"),
-          p("Esta sección reúne las especificaciones metodológicas, fuentes cartográficas e índices de evaluación de la flota escolar e infraestructura eléctrica de recarga.")
+          h2("Sobre este aplicativo", style = "font-weight:800; color:#0f172a; margin-top:0;"),
+          p("Esta sección reúne las especificaciones metodológicas, fuentes cartográficas e índices de evaluación de la flota escolar e infraestructura eléctrica de recarga."),
+          h3(em("1. ¿Qué es la herramienta?")),
+          h3(em("2. ¿Dónde se almacena?")),
+          h3(em("3. Módulos de la herramienta")),
+          h4(em("3.1. Explore las propuestas")),
+          h4(em("3.2. Diseñe su proyecto")),
+          h3(em("4. Resultados")),
+          h4(em("4.1. Beneficiarios")),
+          h4(em("4.2. Beneficiarios")),
+          h4(em("4.3. Beneficiarios")),
+          h4(em("4.3. Beneficiarios"))
         )
       ),
       tabItem(
@@ -1012,8 +1030,8 @@ server <- function(input, output, session) {
                 "<b>Código de la ruta: </b>", ifelse(is.na(CodigoRuta), "N/A", CodigoRuta), "<br>",
                 "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
                 "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
-                "<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
-                "<b>Distancia: </b>", dist_km
+                #"<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
+                "<b>Distancia semanal: </b>", dist_km
               )
             ) %>%
             addLegend(
@@ -1245,6 +1263,8 @@ server <- function(input, output, session) {
   
   output$T1_tabla_resumen_km <- renderDT({
     datos_clus <- rutas_filtradas_reactivas()
+    #factorVacio <- 1+CFG$modif_km_vacio$km_vacio_perc
+    factorVacio<- 1 + dplyr::coalesce(CFG$modif_km_vacio$km_vacio_perc, 0)
     if (is.null(datos_clus) || nrow(datos_clus) == 0) {
       return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
     }
@@ -1252,7 +1272,7 @@ server <- function(input, output, session) {
     tabla_resumen <- datos_clus %>%
       sf::st_drop_geometry() %>%
       group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
-      summarise(Total_KM = sum(disRutaSem, na.rm = TRUE)/1000, .groups = "drop") %>%
+      summarise(Total_KM = sum(disRutaSem, na.rm = TRUE)/1000*factorVacio, .groups = "drop") %>%
       pivot_wider(names_from = SR_Tip_Ruta, values_from = Total_KM, values_fill = 0) %>% 
       rename("Tipo de Vehículo" = SR_Veh_Aj_2) %>% 
       janitor::adorn_totals(where = c("row", "col"), fill = "-", na.rm = TRUE, name = "Total")
@@ -1521,13 +1541,15 @@ server <- function(input, output, session) {
     datos <- req(rutas_filtradas_reactivas())
     req(datos, nrow(datos) > 0)
     
+    #factorVacio <- 1+CFG$modif_km_vacio$km_vacio_perc
+    factorVacio<- 1 + dplyr::coalesce(CFG$modif_km_vacio$km_vacio_perc, 0)
     fac_esco <- dplyr::coalesce(CFG$factor_exp$semana_esco, 40)
     fac_gral <- dplyr::coalesce(CFG$factor_exp$semana_gral, 52)
     
     tabla_Km <- datos %>%
       sf::st_drop_geometry() %>%
       group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
-      summarise(Total_disRutaSem = sum(disRutaSem / 1000, na.rm = TRUE), .groups = "drop") %>%
+      summarise(Total_disRutaSem = sum(disRutaSem / 1000*factorVacio, na.rm = TRUE), .groups = "drop") %>%
       pivot_wider(names_from = SR_Tip_Ruta, values_from = Total_disRutaSem, values_fill = 0) %>%
       rename(`Tipo de Vehículo` = SR_Veh_Aj_2)
     
@@ -1596,16 +1618,21 @@ server <- function(input, output, session) {
   
   output$T1_emisiones_plot <- renderPlotly({
     data <- req(T1_emisionesSubDataset())
+    
+    print("Base contaminantes T1")
+    print(T1_emisionesSubDataset())
+    
     contaminantes_sel <- req(input$T1_filtro_t_emision)
     
     data_filtrada <- data %>%
       mutate(Contaminante = toupper(as.character(Contaminante))) %>%
-      filter(Contaminante %in% toupper(contaminantes_sel))
+      filter(Contaminante %in% toupper(contaminantes_sel)) %>%
+      mutate(across(where(is.numeric), ~ . * 1000))
     
     req(nrow(data_filtrada) > 0)
     plot_ly(data = data_filtrada, x = ~Contaminante, y = ~Emisiones_Escolar, name = 'Escolar', type = 'bar') %>%
       add_trace(y = ~Emisiones_Extra, name = 'Extra') %>%
-      layout(separators = ",.", barmode = 'stack', yaxis = list(title = 'Toneladas', tickformat = ',.1f'))
+      layout(separators = ",.", barmode = 'stack', yaxis = list(title = 'Kilogramos', tickformat = ',.1f'))
   })
   
   output$T1_Km_ano_table <- renderDT({
@@ -1810,6 +1837,9 @@ server <- function(input, output, session) {
   
   output$tabla_resumen_km <- renderDT({
     datos_clus <- rutasSubDataset()
+    
+    factorVacio<- 1 + dplyr::coalesce(CFG$modif_km_vacio$km_vacio_perc, 0)
+    #factorVacio <- 1+CFG$modif_km_vacio$km_vacio_perc
     if (is.null(datos_clus) || nrow(datos_clus) == 0) {
       return(datatable(data.frame(Mensaje = "No hay datos para la combinación de filtros seleccionada.")))
     }
@@ -1817,7 +1847,7 @@ server <- function(input, output, session) {
     tabla_resumen <- datos_clus %>%
       sf::st_drop_geometry() %>%
       group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
-      summarise(Total_KM = sum(disRutaSem, na.rm = TRUE)/1000, .groups = "drop") %>%
+      summarise(Total_KM = sum(disRutaSem, na.rm = TRUE)/1000*factorVacio, .groups = "drop") %>%
       pivot_wider(names_from = SR_Tip_Ruta, values_from = Total_KM, values_fill = 0) %>% 
       rename("Tipo de Vehículo" = SR_Veh_Aj_2) %>% 
       janitor::adorn_totals(where = c("row", "col"), fill = "-", na.rm = TRUE, name = "Total")
@@ -2241,13 +2271,15 @@ server <- function(input, output, session) {
     datos <- req(rutasSubDataset())
     req(datos, nrow(datos) > 0)
     
+    #factorVacio <- 1+CFG$modif_km_vacio$km_vacio_perc
+    factorVacio<- 1 + dplyr::coalesce(CFG$modif_km_vacio$km_vacio_perc, 0)
     fac_esco <- dplyr::coalesce(CFG$factor_exp$semana_esco, 40)
     fac_gral <- dplyr::coalesce(CFG$factor_exp$semana_gral, 52)
     
     tabla_Km <- datos %>%
       sf::st_drop_geometry() %>%
       group_by(SR_Veh_Aj_2, SR_Tip_Ruta) %>%
-      summarise(Total_disRutaSem = sum(disRutaSem / 1000, na.rm = TRUE), .groups = "drop") %>%
+      summarise(Total_disRutaSem = sum(disRutaSem / 1000*factorVacio, na.rm = TRUE), .groups = "drop") %>%
       pivot_wider(names_from = SR_Tip_Ruta, values_from = Total_disRutaSem, values_fill = 0) %>%
       rename(`Tipo de Vehículo` = SR_Veh_Aj_2)
     
@@ -2317,15 +2349,18 @@ server <- function(input, output, session) {
   output$CL_emisiones_plot <- renderPlotly({
     data <- req(emisionesSubDataset())
     contaminantes_sel <- req(input$filtro_t_emision)
+    print("Base contaminantes")
+    print(data)
     
     data_filtrada <- data %>%
       mutate(Contaminante = toupper(as.character(Contaminante))) %>%
-      filter(Contaminante %in% toupper(contaminantes_sel))
+      filter(Contaminante %in% toupper(contaminantes_sel)) %>%
+      mutate(across(where(is.numeric), ~ . * 1000))
     
     req(nrow(data_filtrada) > 0)
     plot_ly(data = data_filtrada, x = ~Contaminante, y = ~Emisiones_Escolar, name = 'Escolar', type = 'bar') %>%
       add_trace(y = ~Emisiones_Extra, name = 'Extra') %>%
-      layout(separators = ",.", barmode = 'stack', yaxis = list(title = 'Toneladas', tickformat = ',.1f'))
+      layout(separators = ",.", barmode = 'stack', yaxis = list(title = 'Kilogramos', tickformat = ',.1f'))
   })
   
   output$CL_Km_ano_table <- renderDT({
