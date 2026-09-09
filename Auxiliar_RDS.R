@@ -1,5 +1,5 @@
 # 1. Leer GeoJSON pesados
-rutas <- st_read("Assets/GeoJSON/09_Ruta_sabanas_id_hexagonoV3.geojson") %>% 
+rutas <- st_read("Assets/GeoJSON/09_Ruta_sabanas_id_hexagonoV2.geojson") %>% 
   st_transform(4326) %>% 
   filter(!st_is_empty(.)) %>%
   subset(st_geometry_type(.) %in% c("LINESTRING","MULTILINESTRING"))

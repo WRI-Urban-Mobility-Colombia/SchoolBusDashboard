@@ -1,9 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "14_Cargadores_adicionales",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::3116" } },
-"features": [
-{ "type": "Feature", "properties": { "id": 1, "Nombre": "La Alhambra" }, "geometry": { "type": "Point", "coordinates": [ 1002208.329703699913807, 1011361.569758473429829 ] } },
-{ "type": "Feature", "properties": { "id": 2, "Nombre": "Bolera el Salitre" }, "geometry": { "type": "Point", "coordinates": [ 997847.698348868405446, 1007901.504642167245038 ] } }
-]
-}
