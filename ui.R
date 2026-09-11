@@ -492,7 +492,7 @@ ui <- dashboardPage(
                   )
                 ),
                 column(
-                  width = 9,
+                  width = 12,
                   h4(em("Consumo de energía proyectado para los parámetros elegidos (kWh)", style = "font-weight:700; color:#0f172a;")),
                   plotlyOutput("T1_demanda_energetica_plot", height = "280px"),
                   br(),
@@ -505,6 +505,13 @@ ui <- dashboardPage(
                     column(4, div(class = "glass-panel-light", style="text-align:center;", h5("Energía Diaria"), uiOutput("T1_cons_diario"))),
                     column(4, div(class = "glass-panel-light", style="text-align:center;", h5("Potencia Total"), uiOutput("T1_pot_req"))),
                     column(4, div(class = "glass-panel-light", style="text-align:center;", h5("Cargadores Req."), uiOutput("T1_cargadores_req")))
+                  ),
+                  hr(),
+                  column(
+                    width = 9,
+                    h4(em("Remuneración por el servicio de recarga", style = "font-weight:700; color:#0f172a;")),
+                    sliderInput("T1_precio_energia","Precio de venta por kWh:", min = 500, max = 3000, value = 1600, step = 100),
+                    uiOutput("T1_remuneracion_dia")
                   )
                 )
               )
@@ -752,6 +759,14 @@ ui <- dashboardPage(
                     column(4, div(class = "glass-panel-light", style="text-align:center;", h5("Energía Diaria"), uiOutput("CL_cons_diario"))),
                     column(4, div(class = "glass-panel-light", style="text-align:center;", h5("Potencia Total"), uiOutput("CL_pot_req"))),
                     column(4, div(class = "glass-panel-light", style="text-align:center;", h5("Cargadores Req."), uiOutput("CL_cargadores_req")))
+                  ),
+                  hr(),
+                  column(
+                    width = 9,
+                    hr(),
+                    h4(em("Remuneración por el servicio de recarga", style = "font-weight:700; color:#0f172a;")),
+                    sliderInput("CL_precio_energia","Precio de venta por kWh:", min = 500, max = 3000, value = 1600, step = 100),
+                    uiOutput("CL_remuneracion_dia")
                   )
                 )
               )
@@ -804,6 +819,7 @@ ui <- dashboardPage(
           bsCollapse(
             id = "doc_collapse", multiple = TRUE,
             bsCollapsePanel("1. ¿Qué es la herramienta?", 
+                            p("Esta herramienta tiene como objetivo facilitar la toma de decisiones a través de los datos"),
                             p("Esta es una herramienta que permite analizar proyectos de electrificación de las rutas escolares del sistema del PME de la Secretaría Distrital de Bogotá."),
                             br(),
                             p("Agrupa rutas en función del punto de destino de los recorridos, y presenta los datos de las zonas seleccionadas"),
@@ -1608,6 +1624,12 @@ server <- function(input, output, session) {
     cargadores <- ceiling(round(resultado, 2) / 150)
     valueBox(value = paste0(cargadores), subtitle = "Cargadores 150 kW", icon = icon("charging-station"), color = "purple", width = NULL)
   })
+  output$T1_remuneracion_dia <- renderUI({
+    consData <- req(T1ConsSubDataset(), input$T1_precio_energia)
+    total_energia_sem <- consData %>% select(-any_of("Total")) %>% select(where(is.numeric)) %>% as.matrix() %>% sum(na.rm = TRUE)
+    valor_energia_sem <- total_energia_sem * input$T1_precio_energia
+    valueBox(value = paste0("$ ",format(round(valor_energia_sem, 0), big.mark = ".", decimal.mark = ",", scientific = FALSE)), subtitle = "Remuneración semanal", icon = icon("dollar"), color = "green", width = 6)
+  })
   
   # Sub-pestaña Impacto Ambiental Tab 1
   T1_KmSubdataset <- reactive({
@@ -2338,6 +2360,12 @@ server <- function(input, output, session) {
     resultado <- total_energia / divisor / input$VentanaCarga
     cargadores <- ceiling(round(resultado, 2) / 150)
     valueBox(value = paste0(cargadores), subtitle = "Cargadores 150 kW", icon = icon("charging-station"), color = "purple", width = NULL)
+  })
+  output$CL_remuneracion_dia <- renderUI({
+    consData <- req(CLConsSubDataset(), input$CL_precio_energia)
+    total_energia_sem <- consData %>% select(-any_of("Total")) %>% select(where(is.numeric)) %>% as.matrix() %>% sum(na.rm = TRUE)
+    valor_energia_sem <- total_energia_sem * input$CL_precio_energia
+    valueBox(value = paste0("$ ",format(round(valor_energia_sem, 0), big.mark = ".", decimal.mark = ",", scientific = FALSE)), subtitle = "Remuneración semanal", icon = icon("dollar"), color = "green", width = 6)
   })
   
   CL_KmSubdataset <- reactive({
