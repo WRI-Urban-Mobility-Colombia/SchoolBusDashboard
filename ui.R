@@ -48,7 +48,10 @@ rutasv2R1 <- rutasv2 %>%
     disRutaSem  = Dis_ruta_m * SR_Tot_Dias,
     disHorasSem = SR_Toal_H * SR_Tot_Dias,
     SR_DaneIED  = gsub("\\.", "", SR_DaneIED)
-  )
+  ) %>%
+  # Se hace UNA sola vez aquí (antes se repetía en cada filtro dentro de los reactives)
+  filter(!st_is_empty(.)) %>%
+  sf::st_make_valid()
 
 poligonosV2$NoRutas <- sapply(poligonosV2$id, function(x) sum(rutasv2R1$id_2 == x, na.rm = TRUE))
 
@@ -923,6 +926,14 @@ server <- function(input, output, session) {
   
   seleccionados <- reactiveVal(character(0))
   
+  # Banderas: los observers de proxy solo dibujan cuando el mapa ya existe en el navegador
+  # (Leaflet envía input$<mapa>_zoom al terminar de inicializarse). Evita llamadas de proxy
+  # perdidas y trabajo innecesario mientras la pestaña está oculta.
+  mapa_t1_listo   <- reactiveVal(FALSE)
+  mapa_clus_listo <- reactiveVal(FALSE)
+  observeEvent(input$mapa_interactivo_zoom, mapa_t1_listo(TRUE),   once = TRUE, ignoreNULL = TRUE)
+  observeEvent(input$mapa_clusteres_zoom,   mapa_clus_listo(TRUE), once = TRUE, ignoreNULL = TRUE)
+  
   observeEvent(input$mapa_interactivo_shape_click, {
     click <- input$mapa_interactivo_shape_click
     req(click$id)
@@ -955,15 +966,15 @@ server <- function(input, output, session) {
       library     = "fa"                
     )
     
-    leaflet(poligonosV2) %>%
-      addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
+    leaflet(poligonosV2, options = leafletOptions(preferCanvas = TRUE)) %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
       addPolygons(
         data = pat_ele_buff,
         fillColor = "#4db608",
         fillOpacity = 0.5,
         weight = 2,
         dashArray = "4,4",
-        group = "Buffer "
+        group = "Buffers"
       ) %>%
       addPolygons(
         data = punt_ad_buff,
@@ -971,10 +982,11 @@ server <- function(input, output, session) {
         fillOpacity = 0.5,
         weight = 2,
         dashArray = "4,4",
-        group = "Buffer "
+        group = "Buffers"
       ) %>%
       addPolygons(
         layerId     = ~id,
+        group       = "Polígonos",
         fillColor   = "#ffffbf",
         fillOpacity = 0.5,
         color       = "#fc8d59",
@@ -992,24 +1004,27 @@ server <- function(input, output, session) {
         group = "Patios eléctricos SITP"
       ) %>%
       addLayersControl(
-        overlayGroups = c("Polígonos", "Polígonos Seleccionados", "Rutas Filtradas", "Colegios (DANE)"),
+        # Los nombres deben coincidir EXACTAMENTE con los `group` usados al dibujar
+        overlayGroups = c("Polígonos", "Polígonos Seleccionados", "Buffers",
+                          "Patios eléctricos SITP", "Rutas Filtradas", "Colegios (DANE)"),
         options       = layersControlOptions(collapsed = FALSE)
       )
   })
   
   observe({
+    req(mapa_t1_listo())
     vector_actual <- seleccionados()
     proxy <- leafletProxy("mapa_interactivo")
-    proxy %>% clearGroup("seleccion_roja")
+    proxy %>% clearGroup("Polígonos Seleccionados")
     
     if (length(vector_actual) > 0) {
-      poly_seleccionados <- poligonosV2 %>% filter(id %in% vector_actual)
+      poly_seleccionados <- poligonosV2[poligonosV2$id %in% vector_actual, ]
       
       proxy %>%
         addPolygons(
           data        = poly_seleccionados,
           layerId     = ~paste0("sel_", id),
-          group       = "seleccion_roja",
+          group       = "Polígonos Seleccionados",
           fillColor   = "orange",
           fillOpacity = 0.6,
           color       = "purple",
@@ -1060,23 +1075,15 @@ server <- function(input, output, session) {
       datos <- datos %>% filter(SR_Veh_Aj_2 %in% input$filtro_tipo_vehiculo)
     }
     
-    if (inherits(datos, "sf") && nrow(datos) > 0) {
-      datos <- datos %>% 
-        filter(!st_is_empty(.)) %>%
-        sf::st_make_valid()
-    }
-    
+    # (st_make_valid / st_is_empty se aplican una sola vez en el preprocesamiento global)
     return(datos)
   })
   
+  # --- Tab 1: Colegios (solo dependen de las rutas filtradas) ---
   observe({
-    proxy <- leafletProxy("mapa_interactivo")
-    proxy %>% 
-      clearGroup("Rutas Filtradas") %>% 
-      clearGroup("Colegios (DANE)") %>%
-      clearControls()
-    
+    req(mapa_t1_listo())
     rutas_sub <- rutas_filtradas_reactivas()
+    proxy <- leafletProxy("mapa_interactivo") %>% clearGroup("Colegios (DANE)")
     
     if (!is.null(rutas_sub) && nrow(rutas_sub) > 0) {
       cods_dane_rutas <- unique(na.omit(rutas_sub$Dane_IED2))
@@ -1091,48 +1098,57 @@ server <- function(input, output, session) {
             popup = ~paste0("<b>Colegio: </b>", NOMBRE_INS, "<br><b>Código DANE: </b>", COD_DANE)
           )
       }
-      
-      var_color <- ifelse(!is.null(input$var_color_ruta) && nzchar(input$var_color_ruta), input$var_color_ruta, "SR_Tip_Ruta")
-      
-      if (var_color %in% names(rutas_sub)) {
-        vec_color <- rutas_sub[[var_color]]
-        valores_unicos <- sort(unique(na.omit(vec_color)))
-        
-        if (length(valores_unicos) > 0) {
-          paleta <- if (var_color == "SR_Tip_Ruta") paleta_tipo_ruta else paleta_tipo_vehiculo
-          titulo_leyenda <- if (identical(var_color, "SR_Tip_Ruta")) "Tipo de Ruta" else "Tipo de Vehículo"
-          
-          dist_km <- ifelse(
-            is.na(rutas_sub$disRutaSem), 
-            "N/A", 
-            paste0(format(round(rutas_sub$disRutaSem / 1000, 2), big.mark = ".", decimal.mark = ","), " Km")
-          )
-          
-          proxy %>%
-            addPolylines(
-              data        = rutas_sub,
-              group       = "Rutas Filtradas",
-              color       = paleta(vec_color),
-              weight      = 3.5,
-              opacity     = 0.85,
-              popup       = ~paste0(
-                "<b>Código de la ruta: </b>", ifelse(is.na(CodigoRuta), "N/A", CodigoRuta), "<br>",
-                "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
-                "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
-                #"<b>Hexágono ID: </b>", ifelse(is.na(Id_Hexagono), "N/A", Id_Hexagono), "<br>",
-                "<b>Distancia semanal: </b>", dist_km
-              )
-            ) %>%
-            addLegend(
-              position = "bottomright",
-              pal      = paleta,
-              values   = vec_color,
-              title    = titulo_leyenda,
-              opacity  = 0.9
-            )
-        }
-      }
     }
+  })
+  
+  # --- Tab 1: Rutas + leyenda (dependen de las rutas filtradas y de la variable de color) ---
+  observe({
+    req(mapa_t1_listo())
+    rutas_sub <- rutas_filtradas_reactivas()
+    proxy <- leafletProxy("mapa_interactivo") %>%
+      clearGroup("Rutas Filtradas") %>%
+      removeControl("leg_rutas_t1")
+    
+    req(!is.null(rutas_sub), nrow(rutas_sub) > 0)
+    
+    var_color <- ifelse(!is.null(input$var_color_ruta) && nzchar(input$var_color_ruta), input$var_color_ruta, "SR_Tip_Ruta")
+    req(var_color %in% names(rutas_sub))
+    
+    vec_color <- rutas_sub[[var_color]]
+    valores_unicos <- sort(unique(na.omit(vec_color)))
+    req(length(valores_unicos) > 0)
+    
+    paleta <- if (var_color == "SR_Tip_Ruta") paleta_tipo_ruta else paleta_tipo_vehiculo
+    titulo_leyenda <- if (identical(var_color, "SR_Tip_Ruta")) "Tipo de Ruta" else "Tipo de Vehículo"
+    
+    dist_km <- ifelse(
+      is.na(rutas_sub$disRutaSem), 
+      "N/A", 
+      paste0(format(round(rutas_sub$disRutaSem / 1000, 2), big.mark = ".", decimal.mark = ","), " Km")
+    )
+    
+    proxy %>%
+      addPolylines(
+        data        = rutas_sub,
+        group       = "Rutas Filtradas",
+        color       = paleta(vec_color),
+        weight      = 3.5,
+        opacity     = 0.85,
+        popup       = ~paste0(
+          "<b>Código de la ruta: </b>", ifelse(is.na(CodigoRuta), "N/A", CodigoRuta), "<br>",
+          "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
+          "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
+          "<b>Distancia semanal: </b>", dist_km
+        )
+      ) %>%
+      addLegend(
+        position = "bottomright",
+        pal      = paleta,
+        values   = vec_color,
+        title    = titulo_leyenda,
+        opacity  = 0.9,
+        layerId  = "leg_rutas_t1"
+      )
   })
   
   # KPI y Gauge Tab 1
@@ -1714,9 +1730,6 @@ server <- function(input, output, session) {
   output$T1_emisiones_plot <- renderPlotly({
     data <- req(T1_emisionesSubDataset())
     
-    print("Base contaminantes T1")
-    print(T1_emisionesSubDataset())
-    
     contaminantes_sel <- req(input$T1_filtro_t_emision)
     
     data_filtrada <- data %>%
@@ -1755,39 +1768,35 @@ server <- function(input, output, session) {
   ## SECCIÓN 2: PESTAÑA TAB_MAPA2 (Exploración & Impacto - Código Original)
   ##--------------------------------------------------------------------------##
   
+  # Mapa base ESTÁTICO: sin dependencias reactivas, se crea una sola vez.
+  # Todo lo que cambia con los filtros se dibuja por leafletProxy (observers de abajo).
   output$mapa_clusteres <- renderLeaflet({
-    datos <- poligonos_filtrados()
-    bbox  <- sf::st_bbox(poligonosV2)
+    bbox <- sf::st_bbox(poligonosV2)
     
-    leaflet(datos, options = leafletOptions(minZoom = 10, maxZoom = 18)) %>%
-      addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
+    leaflet(options = leafletOptions(minZoom = 10, maxZoom = 18, preferCanvas = TRUE)) %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
+      fitBounds(
+        lng1 = as.numeric(bbox["xmin"]), lat1 = as.numeric(bbox["ymin"]),
+        lng2 = as.numeric(bbox["xmax"]), lat2 = as.numeric(bbox["ymax"])
+      ) %>%
       setMaxBounds(
         lng1 = as.numeric(bbox["xmin"]), lat1 = as.numeric(bbox["ymin"]),
         lng2 = as.numeric(bbox["xmax"]), lat2 = as.numeric(bbox["ymax"])
       ) %>%
-      addPolygons(
-        layerId = ~id, fillColor = ~factpal_patios(Cluster), fillOpacity = 0.5,
-        color = "#f7f7f7", weight = 1.5, group = "Zonas hexagonales",
-        label = ~paste("Zona:", id, "| Cluster:", Cluster)
-      ) %>%
-      addLegend(pal = factpal_patios, values = ~Cluster, title = "Grupo de rutas", position = "bottomright") %>%
       addLayersControl(
         overlayGroups = c("Zonas hexagonales", "Rutas Clúster", "Colegios (DANE)"),
         options = layersControlOptions(collapsed = FALSE)
       )
   })
   
+  # --- Tab 2: Polígonos + leyenda de clústeres (solo dependen del filtro de clúster) ---
   observe({
-    proxy <- leafletProxy("mapa_clusteres")
+    req(mapa_clus_listo())
     poligonos_sub <- poligonos_filtrados()
-    colegios <- colegios_pun
-    rutas_clus <- rutasSubDataset()
     
-    proxy %>% 
-      clearGroup("Zonas hexagonales") %>% 
-      clearGroup("Rutas Clúster") %>% 
-      clearGroup("Colegios (DANE)") %>% 
-      clearControls()
+    proxy <- leafletProxy("mapa_clusteres") %>%
+      clearGroup("Zonas hexagonales") %>%
+      removeControl("leg_clusters")
     
     if (nrow(poligonos_sub) > 0) {
       proxy %>%
@@ -1796,12 +1805,22 @@ server <- function(input, output, session) {
           fillOpacity = 0.5, color = "#f7f7f7", weight = 1.5, group = "Zonas hexagonales",
           label = ~paste("Zona:", id, "| Cluster:", Cluster)
         ) %>%
-        addLegend(pal = factpal_patios, values = poligonos_sub$Cluster, title = "Grupo de rutas", position = "bottomright")
+        addLegend(
+          pal = factpal_patios, values = poligonos_sub$Cluster, title = "Grupo de rutas",
+          position = "bottomright", layerId = "leg_clusters"
+        )
     }
+  })
+  
+  # --- Tab 2: Colegios (solo dependen de las rutas filtradas) ---
+  observe({
+    req(mapa_clus_listo())
+    rutas_clus <- rutasSubDataset()
+    proxy <- leafletProxy("mapa_clusteres") %>% clearGroup("Colegios (DANE)")
     
-    if (!is.null(rutas_clus) && nrow(rutas_clus) > 0 && !is.null(colegios)) {
+    if (!is.null(rutas_clus) && nrow(rutas_clus) > 0 && !is.null(colegios_pun)) {
       cods_dane_rutas <- unique(na.omit(rutas_clus$Dane_IED2))
-      colegios_sub <- colegios[colegios$COD_DANE %in% cods_dane_rutas, ]
+      colegios_sub <- colegios_pun[colegios_pun$COD_DANE %in% cods_dane_rutas, ]
       
       if (nrow(colegios_sub) > 0) {
         proxy %>%
@@ -1811,40 +1830,50 @@ server <- function(input, output, session) {
           )
       }
     }
+  })
+  
+  # --- Tab 2: Rutas + leyenda (dependen de las rutas filtradas y de la variable de color) ---
+  observe({
+    req(mapa_clus_listo())
+    rutas_clus <- rutasSubDataset()
+    proxy <- leafletProxy("mapa_clusteres") %>%
+      clearGroup("Rutas Clúster") %>%
+      removeControl("leg_rutas_clus")
     
-    if (!is.null(rutas_clus) && nrow(rutas_clus) > 0) {
-      var_color <- ifelse(!is.null(input$var_color_ruta_clus) && nzchar(input$var_color_ruta_clus), 
-                          input$var_color_ruta_clus, "SR_Tip_Ruta")
-      
-      if (var_color %in% names(rutas_clus)) {
-        vec_color <- rutas_clus[[var_color]]
-        valores_unicos <- sort(unique(na.omit(vec_color)))
-        
-        if (length(valores_unicos) > 0) {
-          paleta <- if (var_color == "SR_Tip_Ruta") paleta_tipo_ruta else paleta_tipo_vehiculo
-          titulo_leyenda <- if (identical(var_color, "SR_Tip_Ruta")) "Tipo de Ruta" else "Tipo de Vehículo"
-          
-          dist_km <- ifelse(
-            is.na(rutas_clus$disRutaSem), 
-            "N/A", 
-            paste0(format(round(rutas_clus$disRutaSem / 1000, 2), big.mark = ".", decimal.mark = ","), " Km")
-          )
-          
-          proxy %>%
-            addPolylines(
-              data = rutas_clus, group = "Rutas Clúster", color = paleta(vec_color),
-              weight = 3.5, opacity = 0.85,
-              popup = ~paste0(
-                "<b>Código de la ruta: </b>", ifelse(is.na(CodigoRuta), "N/A", CodigoRuta), "<br>",
-                "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
-                "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
-                "<b>Distancia semanal: </b>", dist_km
-              )
-            ) %>%
-            addLegend(position = "bottomleft", pal = paleta, values = vec_color, title = titulo_leyenda, opacity = 0.9)
-        }
-      }
-    }
+    req(!is.null(rutas_clus), nrow(rutas_clus) > 0)
+    
+    var_color <- ifelse(!is.null(input$var_color_ruta_clus) && nzchar(input$var_color_ruta_clus), 
+                        input$var_color_ruta_clus, "SR_Tip_Ruta")
+    req(var_color %in% names(rutas_clus))
+    
+    vec_color <- rutas_clus[[var_color]]
+    valores_unicos <- sort(unique(na.omit(vec_color)))
+    req(length(valores_unicos) > 0)
+    
+    paleta <- if (var_color == "SR_Tip_Ruta") paleta_tipo_ruta else paleta_tipo_vehiculo
+    titulo_leyenda <- if (identical(var_color, "SR_Tip_Ruta")) "Tipo de Ruta" else "Tipo de Vehículo"
+    
+    dist_km <- ifelse(
+      is.na(rutas_clus$disRutaSem), 
+      "N/A", 
+      paste0(format(round(rutas_clus$disRutaSem / 1000, 2), big.mark = ".", decimal.mark = ","), " Km")
+    )
+    
+    proxy %>%
+      addPolylines(
+        data = rutas_clus, group = "Rutas Clúster", color = paleta(vec_color),
+        weight = 3.5, opacity = 0.85,
+        popup = ~paste0(
+          "<b>Código de la ruta: </b>", ifelse(is.na(CodigoRuta), "N/A", CodigoRuta), "<br>",
+          "<b>Tipo de Ruta: </b>", ifelse(is.na(SR_Tip_Ruta), "N/A", SR_Tip_Ruta), "<br>",
+          "<b>Tipo Vehículo: </b>", ifelse(is.na(SR_Veh_Aj_2), "N/A", SR_Veh_Aj_2), "<br>",
+          "<b>Distancia semanal: </b>", dist_km
+        )
+      ) %>%
+      addLegend(
+        position = "bottomleft", pal = paleta, values = vec_color, 
+        title = titulo_leyenda, opacity = 0.9, layerId = "leg_rutas_clus"
+      )
   })
   
   poligonos_filtrados <- reactive({
@@ -1868,10 +1897,7 @@ server <- function(input, output, session) {
       datos_filtrados <- datos_filtrados %>% filter(SR_Veh_Aj_2 %in% input$filtro_tipo_veh_clus)
     }
     
-    if (inherits(datos_filtrados, "sf") && nrow(datos_filtrados) > 0) {
-      datos_filtrados <- datos_filtrados %>% filter(!st_is_empty(.)) %>% sf::st_make_valid()
-    }
-    
+    # (st_make_valid / st_is_empty se aplican una sola vez en el preprocesamiento global)
     return(datos_filtrados)
   })
   
@@ -2450,8 +2476,6 @@ server <- function(input, output, session) {
   output$CL_emisiones_plot <- renderPlotly({
     data <- req(emisionesSubDataset())
     contaminantes_sel <- req(input$filtro_t_emision)
-    print("Base contaminantes")
-    print(data)
     
     data_filtrada <- data %>%
       mutate(Contaminante = toupper(as.character(Contaminante))) %>%
